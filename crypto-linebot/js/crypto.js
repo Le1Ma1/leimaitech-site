@@ -100,9 +100,75 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   };
-  new Chart(ctx, {
+  // Create chart instance and expose for updates
+  let chartInstance = new Chart(ctx, {
     type: 'bar',
-    data,
+    data: JSON.parse(JSON.stringify(data)),
     options
   });
+
+  // Predefined sample datasets for demonstration; values in百萬顆單位
+  const sampleSets = [
+    [24, 16, 11, 8, 13, 19, 30],
+    [20, 18, 9, 6, 10, 24, 33],
+    [28, 14, 12, 10, 15, 16, 27]
+  ];
+  let sampleIndex = 0;
+  const refreshBtn = document.getElementById('refreshData');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      sampleIndex = (sampleIndex + 1) % sampleSets.length;
+      const newData = sampleSets[sampleIndex];
+      chartInstance.data.datasets.forEach((dataset, idx) => {
+        dataset.data[0] = newData[idx];
+      });
+      chartInstance.update();
+    });
+  }
+
+  // Scroll reveal for crypto page sections
+  const revealElements = document.querySelectorAll('.reveal, .process-step');
+  const observer = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        obs.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+  revealElements.forEach(el => {
+    observer.observe(el);
+  });
+
+  // Parallax effect on hero content
+  const hero = document.querySelector('.hero-crypto');
+  const content = document.querySelector('.hero-crypto .content');
+  if (hero && content) {
+    hero.addEventListener('mousemove', (e) => {
+      const rect = hero.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width - 0.5;
+      const y = (e.clientY - rect.top) / rect.height - 0.5;
+      content.style.transform = `translate(${x * 20}px, ${y * 20}px)`;
+    });
+    hero.addEventListener('mouseleave', () => {
+      content.style.transform = '';
+    });
+  }
+
+  // Back to top button behaviour for crypto page
+  const backToTop = document.getElementById('backToTop');
+  const toggleBackToTop = () => {
+    if (!backToTop) return;
+    if (window.scrollY > window.innerHeight) {
+      backToTop.classList.add('visible');
+    } else {
+      backToTop.classList.remove('visible');
+    }
+  };
+  window.addEventListener('scroll', toggleBackToTop);
+  if (backToTop) {
+    backToTop.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
 });

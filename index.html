@@ -62,9 +62,15 @@
   </head>
   <body>
     <header id="home">
+      <!-- Site logo header -->
+      <div class="site-header">
+        <a href="index.html">
+          <img src="assets/logo.webp" alt="LeiMai Logo" class="site-logo" />
+        </a>
+      </div>
       <!-- Particle background -->
       <div id="particles-js"></div>
-      <div class="hero-content">
+      <div class="hero-content reveal">
         <h1>LeiMai 智慧科技 數據整合</h1>
         <p>融合智慧科技與大數據 , 為您打造未來數據應用場景</p>
         <button id="scrollBtn" class="btn" type="button">探索服務</button>
@@ -73,7 +79,7 @@
     <main>
       <section id="services">
         <h2>我們的服務</h2>
-        <div class="service-card">
+        <div class="service-card reveal">
           <img
             src="assets/service-crypto.webp"
             alt="加密貨幣數據推播 LINE BOT"
@@ -82,6 +88,13 @@
           <h3>加密貨幣數據推播 LINE BOT</h3>
           <p>為投資者過濾高信度指標 , 一站式推播比特幣與乙太幣數據</p>
           <a href="crypto-linebot/index.html">深入了解 →</a>
+          <div class="overlay">
+            <h3>掌握鏈上洞察</h3>
+            <p>
+              每日台灣時間  14  時推播比特幣與乙太幣鏈上與交易所數據 , 幫助投資者做出更智慧的決策
+            </p>
+            <a href="crypto-linebot/index.html">立即體驗</a>
+          </div>
         </div>
       </section>
       <section id="timeline">
@@ -105,6 +118,8 @@
         </ul>
       </section>
     </main>
+    <!-- Back to top button -->
+    <div id="backToTop" class="back-to-top" aria-label="回到頂部">↑</div>
     <footer>
       © 2025 LeiMai Tech . 保留所有權利
     </footer>

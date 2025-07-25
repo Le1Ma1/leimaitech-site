@@ -19,7 +19,7 @@
   --radius: 12px;
   --transition-fast: 0.2s ease;
   --max-width: 1200px;
-  --header-height: 80px;
+  --header-height: 64px;
 }
 
 *, *::before, *::after {
@@ -119,40 +119,101 @@ section h2 {
   background-color: var(--color-surface);
 }
 .service-card {
-  background-color: #171d39;
+  /* enable 3D space for flipping card */
+  perspective: 1000px;
+  background-color: transparent;
   border-radius: var(--radius);
-  padding: 2rem;
   max-width: 350px;
-  text-align: left;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
-.service-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+/* Inner wrapper for 3D card flip */
+.service-card-inner {
+  position: relative;
+  width: 100%;
+  /* Set a minimum height so the flipping card has space to display; without this the percentage heights collapse */
+  min-height: 420px;
+  transform-style: preserve-3d;
+  transition: transform 0.8s ease;
+  border-radius: var(--radius);
+  overflow: hidden;
 }
-.service-card img {
+.service-card:hover .service-card-inner {
+  transform: rotateY(180deg);
+}
+.service-card-front,
+.service-card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 2rem;
+}
+.service-card-front {
+  background-color: #171d39;
+  text-align: left;
+}
+.service-card-front img {
   width: 100%;
   height: 180px;
   object-fit: cover;
   border-radius: var(--radius) var(--radius) 0 0;
   margin-bottom: 1rem;
 }
-.service-card h3 {
+.service-card-front h3 {
   font-size: 1.25rem;
   margin-bottom: 0.5rem;
   color: var(--color-text);
 }
-.service-card p {
+.service-card-front p {
   font-size: 0.95rem;
   color: var(--color-muted);
   margin-bottom: 1rem;
 }
-.service-card a {
-  display: inline-block;
+.service-card-front a {
   margin-top: auto;
   font-weight: 600;
   color: var(--color-secondary);
+  transition: color var(--transition-fast);
+}
+.service-card-front a:hover {
+  color: var(--color-primary);
+}
+.service-card-back {
+  transform: rotateY(180deg);
+  background-color: #171d39;
+  align-items: flex-start;
+  text-align: left;
+}
+.service-card-back h3 {
+  font-size: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-primary);
+}
+.service-card-back p {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+.service-card-back a {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  background: linear-gradient(45deg, var(--color-primary), var(--color-secondary));
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+}
+.service-card-back a:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.6);
 }
 
 /* Timeline section */
@@ -202,6 +263,15 @@ section h2 {
   background: var(--color-primary);
   border: 3px solid var(--color-secondary);
   z-index: 1;
+}
+.timeline-item:hover {
+  background-color: #171d39;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.timeline-item:hover::before {
+  transform: scale(1.4);
+  transition: transform 0.2s ease;
 }
 .timeline-item:nth-child(odd)::before {
   right: -10px;
@@ -345,6 +415,40 @@ footer {
   }
 }
 
+/* Process step hover enhancement */
+.process-step:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+}
+
+/* Back to top button */
+.back-to-top {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(45deg, var(--color-primary), var(--color-secondary));
+  color: #fff;
+  font-size: 1.5rem;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease, transform 0.3s ease;
+  z-index: 999;
+}
+.back-to-top.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.back-to-top:hover {
+  transform: translateY(-3px);
+}
+
 .subscribe-section {
   background-color: var(--color-surface);
   border-radius: var(--radius);
@@ -358,4 +462,135 @@ footer {
 }
 .subscribe-section .btn {
   margin-top: 1rem;
+}
+
+/* Site header and logo placement */
+.site-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  padding: 0 1rem;
+  z-index: 2;
+  background: linear-gradient(to bottom, rgba(5, 5, 16, 0.7), rgba(5, 5, 16, 0));
+  backdrop-filter: blur(4px);
+}
+.site-logo {
+  height: 48px;
+  width: auto;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
+/* Generic reveal animation; elements using the reveal class will fade in when visible */
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Timeline items inherit reveal effect */
+.timeline-item {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+.timeline-item.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ==================== Updated service card design ==================== */
+/* The new service card shows primary information by default and reveals
+   additional details in an overlay when hovered. It replaces the prior
+   3D flip implementation to ensure reliable rendering on all devices. */
+.service-card {
+  position: relative;
+  background-color: #171d39;
+  border-radius: var(--radius);
+  padding: 2rem;
+  max-width: 350px;
+  text-align: left;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.service-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+}
+.service-card img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  border-radius: var(--radius) var(--radius) 0 0;
+  margin-bottom: 1rem;
+}
+.service-card h3 {
+  font-size: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+.service-card p {
+  font-size: 0.95rem;
+  color: var(--color-muted);
+  margin-bottom: 1rem;
+}
+.service-card a {
+  display: inline-block;
+  margin-top: auto;
+  font-weight: 600;
+  color: var(--color-secondary);
+  transition: color var(--transition-fast);
+}
+.service-card a:hover {
+  color: var(--color-primary);
+}
+/* overlay for additional info displayed on hover */
+.service-card .overlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(5, 5, 16, 0.9);
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2rem;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.service-card:hover .overlay {
+  opacity: 1;
+  transform: translateY(0);
+}
+.service-card .overlay h3 {
+  color: var(--color-primary);
+  margin-bottom: 0.5rem;
+}
+.service-card .overlay p {
+  color: var(--color-muted);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+.service-card .overlay a {
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  background: linear-gradient(45deg, var(--color-primary), var(--color-secondary));
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+.service-card .overlay a:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
 }
