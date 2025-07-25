@@ -4,39 +4,40 @@
 document.addEventListener('DOMContentLoaded', () => {
   // Configure particles.js for a galaxy‑like background
   if (window.particlesJS) {
+    // Adjust particle density, size and colours to improve contrast and visibility
     particlesJS('particles-js', {
       particles: {
         number: {
-          value: 80,
+          value: 120,
           density: {
             enable: true,
             value_area: 800
           }
         },
         color: {
-          value: ['#5a5aff', '#00c2ff', '#7f5cff']
+          value: ['#6b6bff', '#00d4ff', '#a87fff']
         },
         shape: {
           type: 'circle'
         },
         opacity: {
-          value: 0.6,
+          value: 0.8,
           random: true
         },
         size: {
-          value: 3,
+          value: 3.5,
           random: true
         },
         line_linked: {
           enable: true,
-          distance: 120,
+          distance: 110,
           color: '#5a5aff',
-          opacity: 0.25,
+          opacity: 0.4,
           width: 1
         },
         move: {
           enable: true,
-          speed: 0.3,
+          speed: 0.4,
           direction: 'none',
           random: false,
           straight: false,
