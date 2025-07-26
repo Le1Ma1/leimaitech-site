@@ -18,16 +18,45 @@
       integrity="sha384-DyZ88mC6Up2uqS4h/2MQgEayRYEJ+6JSr4Y5ru82Fw91M2qGvVb3tuMk8jrLZeG7"
       crossorigin="anonymous"
     />
+
+    <!-- Inline styles to harmonise QR section with the dark theme -->
+    <style>
+      /* 深色卡片容器 , 內含 QR Code 與按鈕 */
+      .qr-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #121428; /* 與主背景搭配的深色 */
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        margin-top: 1.5rem;
+      }
+      .qr-container .qr-img {
+        width: 160px;
+        height: 160px;
+        margin-bottom: 1rem;
+        border-radius: 8px;
+        padding: 0.5rem;
+        background-color: #1e1e3f; /* QR 背景框 */
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        filter: invert(1); /* 反轉黑白讓 QR 更適應暗色背景 */
+      }
+      .qr-container .btn {
+        margin-top: 0.5rem;
+      }
+    </style>
   </head>
   <body>
-    <!-- Hero section with background image and logo -->
+    <!-- Hero 區以及其他 section 內容保持不變 -->
     <header class="hero-crypto" style="background-image: url('assets/hero-crypto.webp');">
       <div class="site-header">
         <a href="../index.html">
           <img src="assets/logo.webp" alt="LeiMai Logo" class="site-logo" />
         </a>
       </div>
-      <!-- Rotating rings decorative element -->
       <div class="ring-container">
         <div class="ring one"></div>
         <div class="ring two"></div>
@@ -47,7 +76,10 @@
       </section>
       <section class="solution reveal">
         <h2>解決方案</h2>
-        <p>機器人從 IntoTheBlock , CryptoQuant , CoinGlass , blockchain info , SoSoValue 自動聚合六大類數據 : Lost Supply / Long Term Holder / Speculative / Miners / ETF / Institutional / Unmined Supply</p>
+        <p>
+          機器人從 IntoTheBlock , CryptoQuant , CoinGlass , blockchain info , SoSoValue 自動聚合六大類數據 : Lost Supply /
+          Long Term Holder / Speculative / Miners / ETF / Institutional / Unmined Supply
+        </p>
         <p>即將推出:  2100  萬顆比特幣持有分布變化的視覺化功能</p>
         <p>隨著技術的迭代與數據的進化將持續擴充功能 , 在可預見的未來 , 新用戶將因應服務升級而調整訂閱價格</p>
       </section>
@@ -78,8 +110,7 @@
           </div>
         </div>
       </section>
-
-      <!-- 訂閱區塊：優化 LINE QR 部分 -->
+      <!-- 訂閱區塊 -->
       <section id="subscribe" class="subscribe-section reveal">
         <h2>開始使用</h2>
         <p>只需三步即可享受即時數據服務</p>
@@ -88,14 +119,21 @@
           <li>授權 LINE</li>
           <li>選擇訂閱方案</li>
         </ol>
-        <!-- 官方加入好友按鈕與專屬 QR Code -->
-        <div class="line-join">
-          <a href="https://lin.ee/fpZadc4" target="_blank" rel="noopener">
-            <img src="https://scdn.line-apps.com/n/line_add_friends/btn/zh-Hant.png" alt="加入好友" height="36" />
-          </a>
-          <img src="https://qr-official.line.me/gs/M_589mjxwb_BW.png?oat_content=qr" alt="掃碼加入好友" width="180" height="180" />
+        <!-- 深色卡片包含反色 QR Code 與加入按鈕 -->
+        <div class="qr-container">
+          <img
+            src="https://qr-official.line.me/gs/M_589mjxwb_BW.png?oat_content=qr"
+            alt="掃碼加入好友"
+            class="qr-img"
+          />
+          <a
+            href="https://lin.ee/fpZadc4"
+            class="btn subscribe-btn"
+            target="_blank"
+            rel="nofollow noopener"
+            >立即加入</a
+          >
         </div>
-        <a href="https://lin.ee/fpZadc4" class="btn" target="_blank" rel="nofollow noopener">立即加入</a>
       </section>
     </main>
 
