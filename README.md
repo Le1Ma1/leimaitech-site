@@ -1,3 +1,4 @@
+```
 LEIMAITECH-SITE/
 ├── assets/
 │   ├── favicon.png        # 主站 favicon
@@ -21,3 +22,4 @@ LEIMAITECH-SITE/
 │   └── main.js               # 主站用 JavaScript（首頁滾動效果、粒子背景等）
 ├── CNAME                     # GitHub Pages 自訂網域設定
 └── index.html                # LeiMai Tech 主站首頁
+```
