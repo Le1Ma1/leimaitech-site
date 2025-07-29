@@ -122,3 +122,33 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+// Roadmap 進度點擊切換 (循環: 完成→開發中→計畫中)
+document.querySelectorAll('.timeline-item').forEach((item) => {
+  item.addEventListener('click', function(e) {
+    let status = this.classList;
+    if(status.contains('completed')) {
+      status.remove('completed');
+      status.add('developing');
+    } else if(status.contains('developing')) {
+      status.remove('developing');
+      status.add('planning');
+    } else if(status.contains('planning')) {
+      status.remove('planning');
+      status.add('completed');
+    }
+    // 強制重觸動畫
+    let h3 = this.querySelector('h3');
+    if(h3) {
+      h3.classList.remove('animate-tick');
+      void h3.offsetWidth; // 觸發reflow
+      if(status.contains('completed')) h3.classList.add('animate-tick');
+    }
+  });
+  // 鍵盤 Enter/Space 支援 (a11y)
+  item.addEventListener('keydown', function(e) {
+    if(e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      this.click();
+    }
+  });
+});
