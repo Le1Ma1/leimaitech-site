@@ -66,16 +66,23 @@
         <a href="#subscribe" class="btn">立即訂閱</a>
       </div>
     </header>
-    <section class="promo-lazy-user reveal">
-      <h2>懶人數據生活，全部 LINE 一次搞定！</h2>
-      <ul class="promo-list">
-        <li>你手機裡有多少個 App？用得到幾個？</li>
-        <li>蒐集數據每次都要開好幾個網站？</li>
-        <li><strong>LeiMai 幫你全部搞定，直接推送到 LINE！</strong></li>
-        <li>不用再下載 app，不用再開網頁，一個入口掌握所有加密數據</li>
+    <section class="promo-lazy-user reveal" id="promoLazyUser">
+      <h2><span id="promoTitle">懶人數據生活，全部 LINE 一次搞定！</span></h2>
+      <ul class="promo-list" id="promoList">
+        <li><i class="fas fa-mobile-alt"></i> 你手機裡有多少個 App？用得到幾個？</li>
+        <li><i class="fas fa-search"></i> 蒐集數據是不是每次都要開好幾個網站？</li>
+        <li><i class="fas fa-bolt"></i> <strong>LeiMai 幫你全部搞定，數據直接推送到 LINE！</strong></li>
+        <li><i class="fas fa-thumbs-up"></i> 不用再下載 app，不用再開網頁，一個入口掌握所有加密數據。</li>
       </ul>
+      <!-- 互動小調查 -->
+      <div class="promo-poll" id="promoPoll">
+        <p>你手機裡有超過幾個財經類 App？</p>
+        <button onclick="promoPollVote(3)">3個以上</button>
+        <button onclick="promoPollVote(5)">5個以上</button>
+        <button onclick="promoPollVote(10)">10個以上</button>
+        <span id="promoPollResult"></span>
+      </div>
     </section>
-
     <main>
       <!-- 說明問題來源 -->
       <section class="problem reveal">

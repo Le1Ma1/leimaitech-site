@@ -172,3 +172,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+// 動態標語
+const promoTitles = [
+  "懶人數據生活，全部 LINE 一次搞定！",
+  "App 太多？網站太雜？一鍵進 LINE 就搞定！",
+  "你的數據入口，從今天開始更聰明。",
+  "用 LINE 玩轉加密數據，就是這麼簡單！"
+];
+let promoTitleIdx = 0;
+setInterval(() => {
+  const el = document.getElementById("promoTitle");
+  if (el) {
+    promoTitleIdx = (promoTitleIdx + 1) % promoTitles.length;
+    el.innerText = promoTitles[promoTitleIdx];
+  }
+}, 4000);
+
+// 互動小調查
+function promoPollVote(num) {
+  const res = document.getElementById("promoPollResult");
+  if (res) {
+    res.innerHTML = `👍 有 <b>${num}</b> 個以上的朋友，你不是孤單！<br>用 LeiMai，直接 LINE 數據推播，輕鬆省下切換煩惱！`;
+    setTimeout(()=>{res.innerHTML = "";}, 6500);
+  }
+}
