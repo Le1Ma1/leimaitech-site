@@ -674,14 +674,41 @@ footer {
   font-size: 1em;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.19s;
+  transition: background 0.19s, transform 0.12s;
+  outline: none;
+  box-shadow: 0 2px 10px #1114;
 }
-.promo-poll button:hover {
+.promo-poll button:hover:not(:disabled) {
   background: var(--color-secondary);
+  transform: translateY(-2px) scale(1.06);
 }
-.promo-poll span {
-  display: inline-block;
-  margin-left: 1.2em;
-  color: var(--color-success, #00e699);
-  font-weight: bold;
+.promo-poll button:disabled {
+  background: #42425a !important;
+  color: #bbb !important;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+.promo-poll button.selected {
+  background: linear-gradient(90deg, #00c2ff 60%, #5a5aff 100%) !important;
+  color: #fff !important;
+  border: 2px solid #fff2;
+  transform: scale(1.08);
+}
+#promoPollResult {
+  display: block;
+  margin-top: 0.7em;
+  font-size: 1.09em;
+  min-height: 2.5em;
+  opacity: 0;
+  transition: opacity 0.45s;
+  text-align: left;
+  line-height: 1.7;
+}
+#promoPollResult.visible {
+  opacity: 1;
+  animation: pollFadeIn 0.7s;
+}
+@keyframes pollFadeIn {
+  from { opacity: 0; transform: translateY(20px);}
+  to { opacity: 1; transform: translateY(0);}
 }

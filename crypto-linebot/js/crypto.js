@@ -189,10 +189,35 @@ setInterval(() => {
 }, 4000);
 
 // 互動小調查
-function promoPollVote(num) {
+function promoPollVote(btn, num) {
   const res = document.getElementById("promoPollResult");
+  const btns = document.querySelectorAll(".promo-poll button");
+  // 高亮本按鈕並 disable 全部
+  btns.forEach(b => {
+    b.disabled = true;
+    b.classList.remove("selected");
+  });
+  btn.classList.add("selected");
+
+  // 美觀互動 + 動畫效果 + 震動
   if (res) {
-    res.innerHTML = `👍 有 <b>${num}</b> 個以上的朋友，你不是孤單！<br>用 LeiMai，直接 LINE 數據推播，輕鬆省下切換煩惱！`;
-    setTimeout(()=>{res.innerHTML = "";}, 6500);
+    res.innerHTML = `
+      <span style="font-size:1.25em; color:#00e699; font-weight:700;">🎉 感謝你的參與！</span><br>
+      👍 有 <b>${num}</b> 個以上的朋友，你不是孤單！<br>
+      <span style="color:#8ad1ff;">用 LeiMai，直接 LINE 數據推播，輕鬆省下切換煩惱！</span>
+    `;
+    res.classList.add("visible");
+    // 瀏覽器震動支援
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate([60, 20, 60]);
+    }
+    setTimeout(() => {
+      res.classList.remove("visible");
+      btns.forEach(b => {
+        b.disabled = false;
+        b.classList.remove("selected");
+      });
+      res.innerHTML = "";
+    }, 3200);
   }
 }
