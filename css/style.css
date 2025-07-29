@@ -688,3 +688,84 @@ footer {
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
 }
+/* 訂閱方案版型 */
+.pricing-section {
+  width: 100%;
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 3rem 1rem;
+  text-align: center;
+}
+.pricing-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+.pricing-card {
+  background-color: #171d39;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  padding: 2rem;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  text-align: left;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.pricing-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+}
+.pricing-card h3 {
+  font-size: 1.4rem;
+  margin-bottom: 0.75rem;
+  color: var(--color-primary);
+}
+.pricing-card .price {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--color-secondary);
+}
+.pricing-card ul {
+  list-style: disc;
+  padding-left: 1.2rem;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+.pricing-card ul li {
+  margin-bottom: 0.5rem;
+}
+.pricing-card p {
+  color: var(--color-text);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+.pricing-card .btn {
+  align-self: center;
+  margin-top: auto;
+  text-align: center;
+}
+
+/* 頁尾連結樣式 */
+footer {
+  padding: 2rem 1rem;
+  text-align: center;
+  background-color: var(--color-background);
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+footer nav.footer-links {
+  margin-top: 0.5rem;
+}
+footer nav.footer-links a {
+  color: var(--color-muted);
+  margin: 0 0.5rem;
+  font-size: 0.8rem;
+}
+footer nav.footer-links a:hover {
+  color: var(--color-primary);
+}

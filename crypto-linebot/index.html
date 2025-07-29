@@ -12,7 +12,6 @@
     <meta name="keywords"
       content="加密貨幣 , 數據推播 , LINE BOT , 比特幣 , 乙太幣 , 鏈上數據 , 雷麥創智科技" />
     <link rel="canonical" href="https://leimaitech.com/crypto-linebot/" />
-    <!-- 省略其他 meta 與結構化資料 -->
     <link rel="stylesheet" href="../css/style.css" />
     <link
       rel="stylesheet"
@@ -20,16 +19,14 @@
       integrity="sha384-DyZ88mC6Up2uqS4h/2MQgEayRYEJ+6JSr4Y5ru82Fw91M2qGvVb3tuMk8jrLZeG7"
       crossorigin="anonymous"
     />
-
-    <!-- Inline styles to harmonise QR section with the dark theme -->
+    <!-- 深色 QR 卡片區自定義樣式 -->
     <style>
-      /* 深色卡片容器 , 內含 QR Code 與按鈕 */
       .qr-container {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        background-color: #121428; /* 與主背景搭配的深色 */
+        background-color: #121428;
         border: 1px solid rgba(255, 255, 255, 0.05);
         padding: 1.5rem;
         border-radius: 12px;
@@ -42,9 +39,9 @@
         margin-bottom: 1rem;
         border-radius: 8px;
         padding: 0.5rem;
-        background-color: #1e1e3f; /* QR 背景框 */
+        background-color: #1e1e3f;
         border: 1px solid rgba(255, 255, 255, 0.05);
-        filter: invert(1); /* 反轉黑白讓 QR 更適應暗色背景 */
+        filter: invert(1);
       }
       .qr-container .btn {
         margin-top: 0.5rem;
@@ -52,7 +49,6 @@
     </style>
   </head>
   <body>
-    <!-- Hero 區以及其他 section 內容保持不變 -->
     <header class="hero-crypto" style="background-image: url('assets/hero-crypto.webp');">
       <div class="site-header">
         <a href="../index.html">
@@ -66,25 +62,28 @@
       </div>
       <div class="content reveal">
         <h1>加密貨幣數據推播 LINE BOT</h1>
-        <p>專為投資者過濾高信度指標 , 每日台灣時間  14  時一次推播</p>
+        <p>專為投資者過濾高信度指標 , 每日台灣時間 14 時一次推播</p>
         <a href="#subscribe" class="btn">立即訂閱</a>
       </div>
     </header>
 
     <main>
+      <!-- 說明問題來源 -->
       <section class="problem reveal">
         <h2>問題提出</h2>
         <p>在資訊爆炸時代 , 垃圾數據淹沒真相 , 投資者難以判斷哪些指標值得關注</p>
       </section>
+      <!-- 說明解決方案 -->
       <section class="solution reveal">
         <h2>解決方案</h2>
         <p>
-          機器人從 IntoTheBlock , CryptoQuant , CoinGlass , blockchain info , SoSoValue 自動聚合六大類數據 : Lost Supply /
-          Long Term Holder / Speculative / Miners / ETF / Institutional / Unmined Supply
+          機器人從 IntoTheBlock、CryptoQuant、CoinGlass、blockchain info、SoSoValue
+          自動聚合六大類數據：Lost Supply、Long Term Holder、Speculative、Miners、ETF、Institutional、Unmined Supply
         </p>
-        <p>即將推出:  2100  萬顆比特幣持有分布變化的視覺化功能</p>
-        <p>隨著技術的迭代與數據的進化將持續擴充功能 , 在可預見的未來 , 新用戶將因應服務升級而調整訂閱價格</p>
+        <p>即將推出：2100 萬顆比特幣持有分布變化的視覺化功能</p>
+        <p>隨著技術迭代與數據進化將持續擴充功能 , 未來新用戶可能因服務升級調整訂閱價格</p>
       </section>
+      <!-- 堆疊圖示範 -->
       <section class="chart-section reveal">
         <h2>持幣分類堆疊圖</h2>
         <canvas id="holdingChart" aria-label="持幣分類堆疊圖" role="img"></canvas>
@@ -92,6 +91,7 @@
           <button id="refreshData" class="btn" type="button">切換示例數據</button>
         </div>
       </section>
+      <!-- 每日流程 -->
       <section class="process-section reveal">
         <h2>每日流程</h2>
         <div class="process-flow">
@@ -112,7 +112,33 @@
           </div>
         </div>
       </section>
-      <!-- 訂閱區塊 -->
+      <!-- 訂閱方案介紹 -->
+      <section class="pricing-section reveal">
+        <h2>訂閱方案介紹</h2>
+        <div class="pricing-cards">
+          <div class="pricing-card">
+            <h3>進階版 Pro</h3>
+            <p class="price">每月 NT$199 | 年繳 NT$1,999</p>
+            <ul>
+              <li>每日自動推播</li>
+              <li>BTC/ETH/ETF 六分類</li>
+              <li>持幣結構圖表</li>
+              <li>全球資產排行</li>
+              <li>獨家精華摘要</li>
+            </ul>
+            <a href="https://lin.ee/fpZadc4" class="btn">我要升級</a>
+          </div>
+          <div class="pricing-card">
+            <h3>專業版 Elite <span style="font-size: 0.9em;">（敬請期待）</span></h3>
+            <p class="price">每月 NT$399 | 年繳 NT$3,999</p>
+            <p style="color: var(--color-muted); line-height: 1.5;">
+              即將開放：VIP 選幣追蹤、自訂推播、回顧查詢、Telegram 同步等高端功能
+            </p>
+            <a href="#" class="btn" style="pointer-events: none; opacity: 0.5;">即將推出</a>
+          </div>
+        </div>
+      </section>
+      <!-- 訂閱流程區 -->
       <section id="subscribe" class="subscribe-section reveal">
         <h2>開始使用</h2>
         <p>只需三步即可享受即時數據服務</p>
@@ -121,7 +147,6 @@
           <li>授權 LINE</li>
           <li>選擇訂閱方案</li>
         </ol>
-        <!-- 深色卡片包含反色 QR Code 與加入按鈕 -->
         <div class="qr-container">
           <img
             src="https://qr-official.line.me/gs/M_589mjxwb_BW.png?oat_content=qr"
@@ -133,17 +158,20 @@
             class="btn subscribe-btn"
             target="_blank"
             rel="nofollow noopener"
-            >立即加入</a
-          >
+            >立即加入</a>
         </div>
       </section>
     </main>
-
-    <!-- 回頂按鈕與頁尾 -->
+    <!-- 回到頂部與頁尾 -->
     <div id="backToTop" class="back-to-top" aria-label="回到頂部">↑</div>
-    <footer>© 2025 LeiMai Tech . 保留所有權利</footer>
-
-    <!-- 外部腳本 -->
+    <footer>
+      <p>© 2025 LeiMai Tech . 保留所有權利</p>
+      <nav class="footer-links">
+        <a href="privacy.html">隱私權條款</a> |
+        <a href="terms.html">會員服務條款</a> |
+        <a href="returns.html">退換貨政策</a>
+      </nav>
+    </footer>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="js/crypto.js"></script>
   </body>
