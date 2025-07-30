@@ -26,10 +26,9 @@ app.get('/', (req, res) => {
 
 // 金流訂閱 API
 app.post('/api/subscribe', (req, res) => {
-  // 這裡放你金流訂單建立邏輯
-  // 例如：建立 NewebPay 訂單、回傳付款連結
   res.json({ message: '訂閱API已收到', body: req.body });
 });
+
 
 // 金流 webhook
 app.post('/api/webhook', (req, res) => {
