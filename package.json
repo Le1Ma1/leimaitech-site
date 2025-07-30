@@ -3,9 +3,23 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node app.js"
   },
   "dependencies": {
-    "express": "^4.18.2"
-  }
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  },
+  "description": "```\r LEIMAITECH-SITE/\r ├── assets/\r │   ├── favicon.png        # 主站 favicon\r │   ├── hero-main.webp     # 主站首頁背景圖\r │   ├── logo.webp          # 主站使用的 Logo\r │   └── service-crypto.webp# 主站服務卡片圖片\r ├── crypto-linebot/\r │   ├── assets/\r │   │   ├── favicon.png       # 加密機器人頁面 favicon\r │   │   ├── hero-crypto.webp  # 加密機器人頁面背景圖\r │   │   └── logo.webp         # 加密機器人頁面 Logo\r │   ├── js/\r │   │   └── crypto.js         # 加密機器人頁面的主要 JavaScript（Chart.js 初始設定與互動）\r │   ├── index.html            # 加密機器人介紹頁（需修改新增訂閱方案區塊與頁尾連結）\r │   ├── privacy.html          # 新增：加密機器人頁面的隱私權條款\r │   ├── terms.html            # 新增：會員服務條款與消費者權益說明\r │   └── returns.html          # 新增：退換貨政策頁面\r ├── css/\r │   └── style.css             # 全站共用樣式檔（需新增訂閱方案與頁尾樣式）\r ├── js/\r │   └── main.js               # 主站用 JavaScript（首頁滾動效果、粒子背景等）\r ├── CNAME                     # GitHub Pages 自訂網域設定\r └── index.html                # LeiMai Tech 主站首頁\r ```",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Le1Ma1/leimaitech-site.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Le1Ma1/leimaitech-site/issues"
+  },
+  "homepage": "https://github.com/Le1Ma1/leimaitech-site#readme"
 }
