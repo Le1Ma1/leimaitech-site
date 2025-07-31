@@ -24,15 +24,40 @@
           <li>全球資產排行</li>
           <li>獨家精華摘要</li>
         </ul>
-        <button onclick="subscribe('pro')" class="btn btn-upgrade">我要升級</button>
+        <button id="upgradeBtn" class="btn btn-upgrade">我要升級</button>
+        <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+        <script>
+        document.getElementById('upgradeBtn').onclick = async function() {
+          await liff.init({ liffId: '2007745575-JPOMYKYn' });
+          const profile = await liff.getProfile();
+          const userId = profile.userId;
+          const displayName = profile.displayName;
+          // 你也可以用 liff.getDecodedIDToken() 拿 email
+          // 發送訂單資料到後端
+          fetch('/api/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId,
+              displayName,
+              plan: 'pro',     // 你的方案 key
+              period: 'month', // 或 'year'
+              email: ''        // 如果拿得到就傳
+            })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.paymentUrl) {
+              window.location.href = data.paymentUrl;
+            } else {
+              alert('訂單建立失敗');
+            }
+          });
+        };
+        </script>
         <div class="note">10天內隨時取消不收費</div>
       </div>
     </div>
   </main>
-  <script>
-    function subscribe(plan) {
-      alert("這裡未來會串接金流！目前僅顯示測試。你選的是：" + plan);
-    }
-  </script>
 </body>
 </html>
