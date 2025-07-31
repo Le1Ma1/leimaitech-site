@@ -24,25 +24,33 @@
           <li>全球資產排行</li>
           <li>獨家精華摘要</li>
         </ul>
-        <button id="upgradeBtn" class="btn btn-upgrade">我要升級</button>
-        <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-        <script>
-        document.getElementById('upgradeBtn').onclick = async function() {
-          await liff.init({ liffId: '2007745575-JPOMYKYn' });
+        <button class="btn btn-upgrade" data-plan="pro" data-period="month">升級 Pro（月繳）</button>
+        <button class="btn btn-upgrade" data-plan="pro" data-period="year">升級 Pro（年繳）</button>
+        <button class="btn btn-upgrade btn-disabled" data-plan="elite" data-period="month" disabled>即將推出</button>
+        <div class="note">10天內隨時取消不收費</div>
+      </div>
+    </div>
+  </main>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    document.querySelectorAll('.btn-upgrade').forEach(btn => {
+      if (!btn.disabled) {
+        btn.addEventListener('click', async function() {
+          await liff.init({ liffId: '你的LIFF ID' });
           const profile = await liff.getProfile();
           const userId = profile.userId;
           const displayName = profile.displayName;
-          // 你也可以用 liff.getDecodedIDToken() 拿 email
-          // 發送訂單資料到後端
+          const plan = this.getAttribute('data-plan');
+          const period = this.getAttribute('data-period');
           fetch('/api/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               userId,
               displayName,
-              plan: 'pro',     // 你的方案 key
-              period: 'month', // 或 'year'
-              email: ''        // 如果拿得到就傳
+              plan,
+              period,
+              email: ''
             })
           })
           .then(res => res.json())
@@ -53,11 +61,11 @@
               alert('訂單建立失敗');
             }
           });
-        };
-        </script>
-        <div class="note">10天內隨時取消不收費</div>
-      </div>
-    </div>
-  </main>
+        });
+      }
+    });
+  </script>
+  </body>
+  </html>
 </body>
 </html>
