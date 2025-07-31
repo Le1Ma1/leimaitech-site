@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>訂閱方案升級</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="subscribe-section">
+    <h2>選擇你的訂閱方案</h2>
+    <div class="pricing-cards">
+      <div class="pricing-card pro">
+        <div class="badge badge-success">🎉 10 天免費試用</div>
+        <h3>進階版 Pro</h3>
+        <div class="price-row">
+          <span class="price-main">NT$199</span><span class="price-sub">/月</span>
+          <span class="price-divider">|</span>
+          <span class="price-year">年繳 NT$1,999</span>
+        </div>
+        <ul class="features">
+          <li>每日自動推播</li>
+          <li>BTC/ETH/ETF 六分類</li>
+          <li>持幣結構圖表</li>
+          <li>全球資產排行</li>
+          <li>獨家精華摘要</li>
+        </ul>
+        <button onclick="subscribe('pro')" class="btn btn-upgrade">我要升級</button>
+        <div class="note">10天內隨時取消不收費</div>
+      </div>
+    </div>
+  </main>
+  <script>
+    function subscribe(plan) {
+      alert("這裡未來會串接金流！目前僅顯示測試。你選的是：" + plan);
+    }
+  </script>
+</body>
+</html>

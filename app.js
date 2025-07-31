@@ -24,6 +24,13 @@ app.get('/', (req, res) => {
   res.send('API is working!');
 });
 
+const path = require('path');
+app.use(express.static(path.join(__dirname))); // 讓靜態檔案可直接存取
+
+app.get('/subscribe', (req, res) => {
+  res.sendFile(path.join(__dirname, 'subscribe.html'));
+});
+
 // 金流訂閱 API
 app.post('/api/subscribe', (req, res) => {
   res.json({ message: '訂閱API已收到', body: req.body });
