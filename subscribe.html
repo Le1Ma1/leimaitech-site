@@ -8,28 +8,46 @@
 <body>
   <main class="subscribe-section">
     <h2>選擇你的訂閱方案</h2>
-    <div class="pricing-cards">
-      <div class="pricing-card pro">
-        <div class="badge badge-success">🎉 10 天免費試用</div>
-        <h3>進階版 Pro</h3>
-        <div class="price-row">
-          <span class="price-main">NT$199</span><span class="price-sub">/月</span>
-          <span class="price-divider">|</span>
-          <span class="price-year">年繳 NT$1,999</span>
-        </div>
-        <ul class="features">
-          <li>每日自動推播</li>
-          <li>BTC/ETH/ETF 六分類</li>
-          <li>持幣結構圖表</li>
-          <li>全球資產排行</li>
-          <li>獨家精華摘要</li>
-        </ul>
-        <button class="btn btn-upgrade" data-plan="pro" data-period="month">升級 Pro（月繳）</button>
-        <button class="btn btn-upgrade" data-plan="pro" data-period="year">升級 Pro（年繳）</button>
-        <button class="btn btn-upgrade btn-disabled" data-plan="elite" data-period="month" disabled>即將推出</button>
-        <div class="note">10天內隨時取消不收費</div>
+    <!-- Pro 卡 -->
+    <div class="pricing-card pro">
+      <div class="badge badge-success">🎉 10 天免費試用</div>
+      <h3>進階版 Pro</h3>
+      <div class="price-row">
+        <span class="price-main">NT$199</span><span class="price-sub">/月</span>
+        <span class="price-divider">|</span>
+        <span class="price-year">年繳 NT$1,999</span>
       </div>
+      <ul class="features">
+        <li>每日自動推播</li>
+        <li>BTC/ETH/ETF 六分類</li>
+        <li>持幣結構圖表</li>
+        <li>全球資產排行</li>
+        <li>獨家精華摘要</li>
+      </ul>
+      <button class="btn btn-upgrade" data-plan="pro" data-period="month">升級 Pro（月繳）</button>
+      <button class="btn btn-upgrade" data-plan="pro" data-period="year">升級 Pro（年繳）</button>
+      <div class="note">10天內隨時取消不收費</div>
     </div>
+  
+    <!-- Elite 卡（不可點）-->
+    <div class="pricing-card elite disabled">
+      <div class="badge badge-coming"><i class="fas fa-lock"></i> 敬請期待</div>
+      <h3>專業版 Elite</h3>
+      <div class="price-row">
+        <span class="price-main">NT$399</span><span class="price-sub">/月</span>
+        <span class="price-divider">|</span>
+        <span class="price-year">年繳 NT$3,999</span>
+      </div>
+      <ul class="features">
+        <li>VIP 巨鯨資金動向追蹤</li>
+        <li>ETF 深度數據（折溢價、市值等）</li>
+        <li>自訂條件推播／智能預警</li>
+        <li>高階持幣結構／ETF間資金流可視化</li>
+        <li>全球資產排行／多幣種資金流查詢</li>
+      </ul>
+      <button class="btn btn-upgrade btn-disabled" disabled>即將推出</button>
+    </div>
+  </div>
   </main>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
