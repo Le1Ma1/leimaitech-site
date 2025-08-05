@@ -156,6 +156,46 @@ app.get('/api/invite-status', async (req, res) => {
   });
 });
 
+app.get('/pay', async (req, res) => {
+  const { order_no } = req.query;
+  // 1. 查你的 orders 表，取得金額等資料
+  // 2. 組合藍新金流參數
+  // 3. 計算 TradeInfo、TradeSha（用 hashKey/hashIV 加密）
+  // 4. 自動產生 form 跳轉
+
+  // 示意（需根據你訂單內容動態產生）
+  const Amt = 199; // 假設月繳
+  const ItemDesc = "LeiMai Pro 進階訂閱";
+  const MerchantOrderNo = order_no;
+  // ... 其他必要參數與加密
+  res.send(`
+    <form id="payForm" method="POST" action="https://ccore.newebpay.com/MPG/mpg_gateway">
+      <input type="hidden" name="MerchantID" value="你的MerchantID">
+      <input type="hidden" name="TradeInfo" value="加密後字串">
+      <input type="hidden" name="TradeSha" value="SHA256後字串">
+      <input type="hidden" name="Version" value="2.0">
+      <!-- ... -->
+    </form>
+    <script>document.getElementById('payForm').submit();</script>
+  `);
+});
+
+// app.js 內部
+
+app.get('/api/order-status', async (req, res) => {
+  const { order_no } = req.query;
+  if (!order_no) return res.status(400).json({ status: 'missing_order_no' });
+  // 查詢訂單
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('order_no', order_no)
+    .single();
+
+  if (!order) return res.status(404).json({ status: 'not_found' });
+  res.json({ status: order.status });  // status: paid / pending / failed / not_found
+});
+
 // 金流 webhook
 app.post('/api/webhook', async (req, res) => {
   try {
