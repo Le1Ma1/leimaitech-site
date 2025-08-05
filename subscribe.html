@@ -213,7 +213,6 @@
     <div class="pricing-cards">
       <!-- Pro 卡 -->
       <div class="pricing-card pro">
-        <div class="badge badge-success">🎉 10 天免費試用</div>
         <h3>進階版 Pro</h3>
         <div class="price-row">
           <span class="price-main">NT$199</span><span class="price-sub">/月</span>
@@ -229,7 +228,6 @@
         </ul>
         <button class="btn btn-upgrade" data-plan="pro" data-period="month">升級 Pro（月繳）</button>
         <button class="btn btn-upgrade" data-plan="pro" data-period="year">升級 Pro（年繳）</button>
-        <div class="note">10天內隨時取消不收費</div>
       </div>
       <!-- Elite 卡 -->
       <div class="pricing-card elite disabled">
@@ -257,12 +255,13 @@
     document.querySelectorAll('.btn-upgrade').forEach(btn => {
       if (!btn.disabled) {
         btn.addEventListener('click', async function() {
-          await liff.init({ liffId: '你的LIFF ID' }); // 改為你的真實 LIFF ID
+          await liff.init({ liffId: '你的LIFF ID' });
           const profile = await liff.getProfile();
           const userId = profile.userId;
           const displayName = profile.displayName;
           const plan = this.getAttribute('data-plan');
           const period = this.getAttribute('data-period');
+        
           fetch('/api/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -276,10 +275,10 @@
           })
           .then(res => res.json())
           .then(data => {
-            if (data.paymentUrl) {
-              window.location.href = data.paymentUrl;
+            if (data.order_no) {
+              window.location.href = `/pay?order_no=${data.order_no}`;
             } else {
-              alert('訂單建立失敗');
+              alert('訂單建立失敗，請再試一次！');
             }
           });
         });
