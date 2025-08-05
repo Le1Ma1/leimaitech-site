@@ -262,6 +262,19 @@
           const plan = this.getAttribute('data-plan');
           const period = this.getAttribute('data-period');
         
+          // 先註冊會員（用戶存在時會自動忽略）
+          await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId,
+              displayName,
+              email: '',
+              phone: ''
+            })
+          });
+        
+          // 再建立訂單
           fetch('/api/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
