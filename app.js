@@ -206,9 +206,9 @@ app.post('/api/webhook', async (req, res) => {
       const toHash = `HashKey=${key}&${str}&HashIV=${iv}`;
       return crypto.createHash('sha256').update(toHash).digest('hex').toUpperCase();
     };
-    //if (sha256(TradeInfo, key, iv) !== TradeSha) {
-    //  return res.status(400).send('驗證失敗');
-    //}
+    if (sha256(TradeInfo, key, iv) !== TradeSha) {
+      return res.status(400).send('驗證失敗');
+    }
     function decryptTradeInfo(tradeInfo, key, iv) {
       const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
       decipher.setAutoPadding(true);
@@ -216,10 +216,10 @@ app.post('/api/webhook', async (req, res) => {
       decoded += decipher.final('utf8');
       return qs.parse(decoded);
     }
-    //const result = decryptTradeInfo(TradeInfo, key, iv);
-    const result = {
-      MerchantOrderNo: req.body.MerchantOrderNo || "測試訂單編號"
-    };
+    const result = decryptTradeInfo(TradeInfo, key, iv);
+    //const result = {
+    //  MerchantOrderNo: req.body.MerchantOrderNo || "測試訂單編號"
+    //};
 
     // 1. 查訂單
     const { data: order } = await supabase
