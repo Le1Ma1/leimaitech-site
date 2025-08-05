@@ -177,6 +177,9 @@ app.post('/api/webhook', async (req, res) => {
       return qs.parse(decoded);
     }
     //const result = decryptTradeInfo(TradeInfo, key, iv);
+    const result = {
+      MerchantOrderNo: req.body.MerchantOrderNo || "測試訂單編號"
+    };
 
     // 1. 查訂單
     const { data: order } = await supabase
