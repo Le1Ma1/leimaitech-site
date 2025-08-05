@@ -55,7 +55,6 @@ app.post('/api/register', async (req, res) => {
         email,
         phone,
         created_at: now.toISOString(),
-        trial_status: 'registered'   // 可自訂初始狀態
       }])
       .select();
 
@@ -212,12 +211,6 @@ app.post('/api/webhook', async (req, res) => {
       .from('orders')
       .update({ status: 'paid' })
       .eq('order_no', result.MerchantOrderNo);
-
-    // 3. 會員開通
-    await supabase
-      .from('users')
-      .update({ trial_status: 'paid' })
-      .eq('id', order.user_id);
 
     res.status(200).send('OK');
   } catch (err) {
