@@ -176,7 +176,7 @@ app.post('/api/webhook', async (req, res) => {
       decoded += decipher.final('utf8');
       return qs.parse(decoded);
     }
-    const result = decryptTradeInfo(TradeInfo, key, iv);
+    //const result = decryptTradeInfo(TradeInfo, key, iv);
 
     // 1. 查訂單
     const { data: order } = await supabase
