@@ -169,6 +169,8 @@ app.get('/pay', async (req, res) => {
     const tradeSha = shaEncrypt(tradeInfoEnc, key, iv);
 
     console.log(`[PAY] 構建支付表單，商店號: ${process.env.MERCHANT_ID}，訂單: ${order_no}`);
+    console.log('TradeInfoEnc:', tradeInfoEnc);
+    console.log('TradeSha:', tradeSha);
 
     res.send(`
       <form id="payForm" method="POST" action="https://ccore.newebpay.com/MPG/mpg_gateway">
