@@ -108,81 +108,74 @@ app.post('/api/subscribe', async (req, res) => {
 
 // ========== 產生付款表單 ==========
 app.get('/pay', async (req, res) => {
-  console.log(`[API] /pay`, req.query);
   try {
     const { order_no } = req.query;
-    if (!order_no) {
-      console.warn(`[PAY] 缺少訂單編號`);
-      return res.status(400).send('缺少訂單編號');
-    }
+    if (!order_no) return res.status(400).send('缺少訂單編號');
 
+    // 查訂單
     const { data: order, error } = await supabase
       .from('orders')
       .select('*')
       .eq('order_no', order_no)
       .single();
-    if (!order) {
-      console.warn(`[PAY] 查無訂單: ${order_no}`);
-      return res.status(404).send('查無訂單');
-    }
+    if (!order) return res.status(404).send('查無訂單');
 
-    let Amt = 199;
-    let ItemDesc = "LeiMai Pro 進階訂閱（月繳）";
+    // 判斷方案與金額
+    let Amt = 199, PeriodType = 'M', PeriodTimes = 12, PeriodPoint = '01', Desc = 'LeiMai Pro 進階訂閱（月繳）';
     if (order.period === 'year') {
       Amt = 1999;
-      ItemDesc = "LeiMai Pro 進階訂閱（年繳）";
+      PeriodType = 'Y';
+      PeriodTimes = 1;
+      PeriodPoint = (new Date().getMonth() + 1).toString().padStart(2, '0') + (new Date().getDate()).toString().padStart(2, '0'); // 當天
+      Desc = 'LeiMai Pro 進階訂閱（年繳）';
     }
-
-    const Email = "test@example.com";
+    // 補：email 若訂單無，給 test
+    const Email = order.email || "test@example.com";
     const TimeStamp = `${Math.floor(Date.now() / 1000)}`;
-
-    const tradeInfoObj = {
-      MerchantID: process.env.MERCHANT_ID,
+    // 週期付款參數
+    const periodInfoObj = {
       RespondType: 'JSON',
       TimeStamp,
-      Version: '2.0',
-      MerchantOrderNo: order_no,
-      Amt,
-      ItemDesc,
-      Email,
-      NotifyURL: 'https://leimaitech-site.onrender.com/api/webhook',
-      ReturnURL: 'https://leimaitech.com/payment-result.html?order_no=' + order_no,
+      Version: '1.5',               // 定期定額API規定
+      LangType: 'zh-Tw',
+      MerOrderNo: order_no,         // 商店自訂編號
+      ProdDesc: Desc,
+      PeriodAmt: Amt,
+      PeriodType: PeriodType,       // 'M'月繳，'Y'年繳
+      PeriodPoint: PeriodPoint,     // 月繳每月1號，年繳填MMDD
+      PeriodStartType: '2',         // 建議2(立即首期)
+      PeriodTimes: PeriodTimes,     // 幾期
+      PayerEmail: Email,
+      EmailModify: 1,               // 付款頁email可修改
+      NotifyURL: 'https://leimaitech-site.onrender.com/api/period-webhook', // 每期通知
+      ReturnURL: 'https://leimaitech.com/payment-result.html?order_no=' + order_no
     };
 
-    console.log(`[PAY] 準備加密 TradeInfo`, tradeInfoObj);
-
+    // AES 加密（與你原有金流相同）
     function aesEncrypt(data, key, iv) {
       const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
       let enc = cipher.update(qs.stringify(data), 'utf8', 'hex');
       enc += cipher.final('hex');
       return enc;
     }
-    function shaEncrypt(tradeInfo, key, iv) {
-      const str = `HashKey=${key}&${tradeInfo}&HashIV=${iv}`;
-      return crypto.createHash('sha256').update(str).digest('hex').toUpperCase();
-    }
-
     const key = process.env.HASH_KEY;
     const iv = process.env.HASH_IV;
+    const postDataEnc = aesEncrypt(periodInfoObj, key, iv);
 
-    const tradeInfoEnc = aesEncrypt(tradeInfoObj, key, iv);
-    const tradeSha = shaEncrypt(tradeInfoEnc, key, iv);
+    // log for debug
+    console.log('[PERIOD PAY] Params:', periodInfoObj);
+    console.log('[PERIOD PAY] PostData_:', postDataEnc);
 
-    console.log(`[PAY] 構建支付表單，商店號: ${process.env.MERCHANT_ID}，訂單: ${order_no}`);
-    console.log('TradeInfoEnc:', tradeInfoEnc);
-    console.log('TradeSha:', tradeSha);
-
+    // 產生定期定額表單（action & 欄位全換！）
     res.send(`
-      <form id="payForm" method="POST" action="https://ccore.newebpay.com/MPG/mpg_gateway">
-        <input type="hidden" name="MerchantID" value="${process.env.MERCHANT_ID}">
-        <input type="hidden" name="TradeInfo" value="${tradeInfoEnc}">
-        <input type="hidden" name="TradeSha" value="${tradeSha}">
-        <input type="hidden" name="Version" value="2.0">
+      <form id="periodPayForm" method="POST" action="https://ccore.newebpay.com/MPG/period">
+        <input type="hidden" name="MerchantID_" value="${process.env.MERCHANT_ID}">
+        <input type="hidden" name="PostData_" value="${postDataEnc}">
       </form>
-      <script>document.getElementById('payForm').submit();</script>
+      <script>document.getElementById('periodPayForm').submit();</script>
     `);
   } catch (err) {
-    console.error('[PAY] error:', err);
+    console.error('[PERIOD PAY] error:', err);
     res.status(500).send('Server error');
   }
 });
@@ -254,6 +247,32 @@ app.post('/api/webhook', async (req, res) => {
     res.status(200).send('OK');
   } catch (err) {
     console.error('[WEBHOOK] error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+app.post('/api/period-webhook', async (req, res) => {
+  try {
+    // 藍新會用 application/x-www-form-urlencoded 傳送
+    const Period = req.body.Period || req.body.period;
+    const key = process.env.HASH_KEY;
+    const iv = process.env.HASH_IV;
+    // AES 解密
+    function decryptPeriodInfo(period, key, iv) {
+      const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+      decipher.setAutoPadding(true);
+      let decoded = decipher.update(period, 'hex', 'utf8');
+      decoded += decipher.final('utf8');
+      return JSON.parse(decoded);
+    }
+    const result = decryptPeriodInfo(Period, key, iv);
+    console.log('[PERIOD WEBHOOK] Notify:', result);
+
+    // 你可根據 result.Status / MerchantOrderNo / 授權成功失敗邏輯進行訂單與用戶狀態管理
+
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('[PERIOD WEBHOOK] error:', err);
     res.status(500).send('Server Error');
   }
 });
