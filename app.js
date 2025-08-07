@@ -9,6 +9,12 @@ const qs = require('qs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ========== 通用進站 log ==========
+app.use((req, res, next) => {
+  console.log(`[INCOMING] ${req.method} ${req.originalUrl} - ${new Date().toISOString()}`);
+  next();
+});
+
 // 允許主站跨域
 app.use(cors({
   origin: [
@@ -23,30 +29,34 @@ const path = require('path');
 app.use(express.static(path.join(__dirname)));
 
 app.get('/', (req, res) => {
+  console.log(`[INFO] / 被訪問`);
   res.send('API is working!');
 });
 
 // 前端訂閱頁
 app.get('/subscribe', (req, res) => {
+  console.log(`[INFO] /subscribe 被訪問`);
   res.sendFile(path.join(__dirname, 'subscribe.html'));
 });
 
-// **純註冊 API**
+// ========== 純註冊 API ==========
 app.post('/api/register', async (req, res) => {
+  console.log(`[API] /api/register`, req.body);
   try {
     const { userId, displayName, email, phone } = req.body;
-    // 查有沒有這個用戶
     const { data: user, error } = await supabase
       .from('users')
       .select('id')
       .eq('id', userId)
       .single();
 
-    if (user) return res.json({ message: '已註冊' });
+    if (user) {
+      console.log(`[REGISTER] 用戶已註冊: ${userId}`);
+      return res.json({ message: '已註冊' });
+    }
 
     const now = new Date();
 
-    // 只插入基本資料
     const { data, error: insertError } = await supabase
       .from('users')
       .insert([{
@@ -59,24 +69,26 @@ app.post('/api/register', async (req, res) => {
       .select();
 
     if (insertError) throw insertError;
+    console.log(`[REGISTER] 註冊成功: ${userId}`);
     res.json({ message: '註冊成功' });
   } catch (e) {
-    console.error(e);
+    console.error(`[REGISTER] Error:`, e);
     res.status(500).json({ error: 'Server error', detail: e.message });
   }
 });
 
-// **純訂閱，不帶推薦碼**
+// ========== 純訂閱（不帶推薦碼） ==========
 app.post('/api/subscribe', async (req, res) => {
+  console.log(`[API] /api/subscribe`, req.body);
   try {
     const { userId, displayName, email, plan, period } = req.body;
-
-    // 檢查用戶存在
     const { data: selfUser, error: selfErr } = await supabase
       .from('users').select('*').eq('id', userId).single();
-    if (!selfUser) return res.status(400).json({ error: '用戶不存在' });
+    if (!selfUser) {
+      console.warn(`[SUBSCRIBE] 用戶不存在: ${userId}`);
+      return res.status(400).json({ error: '用戶不存在' });
+    }
 
-    // 產生訂單號
     const order_no = `LMAI${Date.now()}${Math.floor(Math.random()*1000)}`;
     await supabase.from('orders').insert([{
       order_no,
@@ -86,25 +98,33 @@ app.post('/api/subscribe', async (req, res) => {
       created_at: new Date().toISOString()
     }]);
 
+    console.log(`[SUBSCRIBE] 訂單建立: ${order_no} 用戶: ${userId} 方案: ${plan} 周期: ${period}`);
     res.json({ message: '訂單已建立', order_no });
   } catch (err) {
-    console.error('subscribe API error:', err);
+    console.error('[SUBSCRIBE] API error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// 付款、金流、webhook流程都**保留原有設計**，只移除推薦獎勵
+// ========== 產生付款表單 ==========
 app.get('/pay', async (req, res) => {
+  console.log(`[API] /pay`, req.query);
   try {
     const { order_no } = req.query;
-    if (!order_no) return res.status(400).send('缺少訂單編號');
+    if (!order_no) {
+      console.warn(`[PAY] 缺少訂單編號`);
+      return res.status(400).send('缺少訂單編號');
+    }
 
     const { data: order, error } = await supabase
       .from('orders')
       .select('*')
       .eq('order_no', order_no)
       .single();
-    if (!order) return res.status(404).send('查無訂單');
+    if (!order) {
+      console.warn(`[PAY] 查無訂單: ${order_no}`);
+      return res.status(404).send('查無訂單');
+    }
 
     let Amt = 199;
     let ItemDesc = "LeiMai Pro 進階訂閱（月繳）";
@@ -129,6 +149,8 @@ app.get('/pay', async (req, res) => {
       ReturnURL: 'https://leimaitech.com/payment-result.html?order_no=' + order_no,
     };
 
+    console.log(`[PAY] 準備加密 TradeInfo`, tradeInfoObj);
+
     function aesEncrypt(data, key, iv) {
       const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
       let enc = cipher.update(qs.stringify(data), 'utf8', 'hex');
@@ -146,6 +168,8 @@ app.get('/pay', async (req, res) => {
     const tradeInfoEnc = aesEncrypt(tradeInfoObj, key, iv);
     const tradeSha = shaEncrypt(tradeInfoEnc, key, iv);
 
+    console.log(`[PAY] 構建支付表單，商店號: ${process.env.MERCHANT_ID}，訂單: ${order_no}`);
+
     res.send(`
       <form id="payForm" method="POST" action="https://ccore.newebpay.com/MPG/mpg_gateway">
         <input type="hidden" name="MerchantID" value="${process.env.MERCHANT_ID}">
@@ -156,13 +180,15 @@ app.get('/pay', async (req, res) => {
       <script>document.getElementById('payForm').submit();</script>
     `);
   } catch (err) {
-    console.error('pay error:', err);
+    console.error('[PAY] error:', err);
     res.status(500).send('Server error');
   }
 });
 
+// ========== 查詢訂單狀態 ==========
 app.get('/api/order-status', async (req, res) => {
   const { order_no } = req.query;
+  console.log(`[API] /api/order-status`, req.query);
   if (!order_no) return res.status(400).json({ status: 'missing_order_no' });
 
   const { data: order, error } = await supabase
@@ -171,12 +197,17 @@ app.get('/api/order-status', async (req, res) => {
     .eq('order_no', order_no)
     .single();
 
-  if (!order) return res.status(404).json({ status: 'not_found' });
+  if (!order) {
+    console.warn(`[ORDER-STATUS] 查無訂單: ${order_no}`);
+    return res.status(404).json({ status: 'not_found' });
+  }
+  console.log(`[ORDER-STATUS] ${order_no} 狀態: ${order.status}`);
   res.json({ status: order.status });
 });
 
-// webhook 不再處理推薦獎勵
+// ========== NewebPay 金流 Webhook ==========
 app.post('/api/webhook', async (req, res) => {
+  console.log(`[API] /api/webhook`, req.body);
   try {
     const { TradeInfo, TradeSha } = req.body;
     const key = process.env.HASH_KEY;
@@ -186,6 +217,7 @@ app.post('/api/webhook', async (req, res) => {
       return crypto.createHash('sha256').update(toHash).digest('hex').toUpperCase();
     };
     if (sha256(TradeInfo, key, iv) !== TradeSha) {
+      console.warn(`[WEBHOOK] TradeSha 驗證失敗`);
       return res.status(400).send('驗證失敗');
     }
     function decryptTradeInfo(tradeInfo, key, iv) {
@@ -196,6 +228,7 @@ app.post('/api/webhook', async (req, res) => {
       return qs.parse(decoded);
     }
     const result = decryptTradeInfo(TradeInfo, key, iv);
+    console.log(`[WEBHOOK] TradeInfo 解密結果:`, result);
 
     // 1. 查訂單
     const { data: order } = await supabase
@@ -204,7 +237,10 @@ app.post('/api/webhook', async (req, res) => {
       .eq('order_no', result.MerchantOrderNo)
       .single();
 
-    if (!order) return res.status(400).send('查無訂單');
+    if (!order) {
+      console.warn(`[WEBHOOK] 查無訂單: ${result.MerchantOrderNo}`);
+      return res.status(400).send('查無訂單');
+    }
 
     // 2. 訂單狀態設為 paid
     await supabase
@@ -212,13 +248,15 @@ app.post('/api/webhook', async (req, res) => {
       .update({ status: 'paid' })
       .eq('order_no', result.MerchantOrderNo);
 
+    console.log(`[WEBHOOK] 完成訂單設為已付款: ${result.MerchantOrderNo}`);
     res.status(200).send('OK');
   } catch (err) {
-    console.error('Webhook error:', err);
+    console.error('[WEBHOOK] error:', err);
     res.status(500).send('Server Error');
   }
 });
 
+// ========== 啟動伺服器 ==========
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
