@@ -23,10 +23,20 @@
     /* 極簡保底樣式，避免載不到 CSS 完全素顏（可以保留也可刪） */
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans TC",Arial,sans-serif;margin:0;padding:24px;background:#050510;color:#f5f5fa}
     .container{max-width:720px;margin:0 auto}
-    .plan{background:#0f1126;border-radius:12px;padding:16px 20px;margin:18px 0;box-shadow:0 4px 12px rgba(0,0,0,.35)}
-    .badge{display:inline-block;background:#5a5aff;color:#fff;padding:.25rem .6rem;border-radius:999px;font-size:.85rem;margin-bottom:.5rem}
+    .plan{background:#0f1126;border-radius:12px;padding:16px 20px;margin:18px 0;box-shadow:0 4px 12px rgba(0,0,0,.35);position: relative; overflow: visible;}
+    .badge{display: inline-flex;background:#5a5aff;color:#fff; padding: .35rem .7rem; border-radius:999px;font-size:.85rem;margin-bottom:.5rem; align-items: center; line-height: 1}
     .price{font-weight:700}
     button{border:0;border-radius:999px;padding:.6rem 1rem}
+    .badge-success { background:#16a34a; }
+
+    /* crypto-linebot/index.html 裡 Pro 卡左上徽章也保險一下 */
+    .pricing-card.pro{ position: relative; overflow: visible; padding-top: 32px; }
+    .pricing-card.pro .badge-free{ position: absolute; top: 12px; left: 12px; }
+
+    /* 行動裝置微調 */
+    @media (max-width:640px){
+      .pricing-card.pro .badge-free{ top:10px; left:10px; }
+    }
   </style>
 </head>
 <body>
