@@ -1,304 +1,75 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <title>訂閱方案升級</title>
-  <link rel="stylesheet" href="/css/style.css">
-  <style>
-    body {
-      background: #0a0a18;
-      min-height: 100vh;
-    }
-    .subscribe-section {
-      max-width: 1080px;
-      margin: 0 auto;
-      padding: 3vw 2vw 2vw 2vw;
-      min-height: 90vh;
-    }
-    .subscribe-section h2 {
-      font-size: 2rem;
-      text-align: center;
-      color: #fff;
-      letter-spacing: 1px;
-      margin-bottom: 2.7rem;
-      font-weight: 900;
-    }
-    .pricing-cards {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      align-items: stretch;
-      gap: 3vw;
-      margin: 0 auto;
-      max-width: 900px;
-    }
-    .pricing-card {
-      flex: 1 1 340px;
-      min-width: 310px;
-      max-width: 420px;
-      margin: 0;
-      background: linear-gradient(130deg, #181c37 80%, #23244b 100%);
-      border-radius: 22px;
-      box-shadow: 0 8px 32px 0 rgba(60,80,180,0.16);
-      padding: 2.2rem 1.3rem 1.7rem 1.3rem;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      position: relative;
-      transition: 
-        transform 0.26s cubic-bezier(.41,1.7,.68,.94), 
-        box-shadow 0.23s cubic-bezier(.41,1.7,.68,.94);
-      height: 100%;
-      z-index: 1;
-    }
-    .pricing-card:hover:not(.disabled) {
-      transform: translateY(-12px) scale(1.045) rotate(-1deg);
-      box-shadow: 0 20px 40px 0 rgba(90,170,255,0.18), 0 0 24px #00c2ff44;
-      border: 2px solid #2cf6ff22;
-      z-index: 5;
-    }
-    .pricing-card .badge-success,
-    .pricing-card .badge-coming {
-      position: absolute;
-      top: -19px; left: 26px;
-      padding: 0.35em 1.2em;
-      border-radius: 16px;
-      font-size: 1em;
-      font-weight: 800;
-      box-shadow: 0 2px 8px #0002;
-      letter-spacing: 1px;
-      z-index: 10;
-    }
-    .pricing-card .badge-success {
-      background: linear-gradient(90deg,#00c2ff 40%,#5a5aff 100%);
-      color: #fff;
-    }
-    .pricing-card .badge-coming {
-      background: #32344a;
-      color: #ccc;
-      font-weight: 700;
-    }
-    .pricing-card h3 {
-      font-size: 1.48rem;
-      font-weight: 900;
-      margin-bottom: 0.7rem;
-      margin-top: 1.5rem;
-      color: #5aebc0;
-      letter-spacing: 1px;
-      text-shadow: 0 2px 12px #0005;
-    }
-    .pricing-card.elite h3 {
-      color: #c0d7ff;
-      font-weight: 800;
-    }
-    .pricing-card .price-row {
-      font-size: 1.21em; font-weight: 700;
-      margin: 1.15em 0 0.3em 0;
-      color: #5a5aff;
-    }
-    .price-main { font-size: 1.4em; color: #5a5aff;}
-    .pricing-card.elite .price-main { color: #2b93ff;}
-    .price-year { font-size: 1em; color: #00c2ff; margin-left: 8px;}
-    .pricing-card.elite .price-year { color: #47e5fd;}
-    .features {
-      list-style: none;
-      margin: 1.2em 0 1.1em 0;
-      padding: 0;
-      color: #f5f5fa;
-      font-size: 1.11em;
-      text-align: left;
-      width: 100%;
-      min-height: 8.5em;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5em;
-    }
-    .features li {
-      padding-left: 1.2em;
-      position: relative;
-      opacity: 0.92;
-    }
-    .features li:before {
-      content: "•";
-      color: #00e6ff;
-      font-size: 1.4em;
-      position: absolute;
-      left: 0;
-      top: 0.09em;
-      opacity: 0.8;
-    }
-    .pricing-card.elite {
-      background: linear-gradient(127deg, #252545 80%, #393b54 100%);
-      box-shadow: 0 8px 34px 0 rgba(40,50,70,0.22);
-      filter: grayscale(18%);
-      opacity: 0.89;
-    }
-    .pricing-card.elite.disabled {
-      filter: grayscale(68%);
-      opacity: 0.75;
-      pointer-events: none;
-      box-shadow: 0 8px 32px 0 rgba(120,120,150,0.10);
-    }
-    .pricing-card .btn-upgrade,
-    .pricing-card .btn-disabled {
-      display: block;
-      margin: 0.7em auto 0 auto;
-      padding: 0.98em 1em;
-      font-weight: 700;
-      border-radius: 999px;
-      background: linear-gradient(89deg, #00c2ff 60%, #5a5aff 100%);
-      color: #fff;
-      font-size: 1.18em;
-      box-shadow: 0 4px 18px rgba(0,40,140,0.13);
-      border: none;
-      width: 90%;
-      max-width: 320px;
-      letter-spacing: 1px;
-      cursor: pointer;
-      transition: 
-        transform 0.17s cubic-bezier(.51,1.5,.5,.93),
-        box-shadow 0.19s cubic-bezier(.41,1.7,.68,.94);
-    }
-    .pricing-card .btn-upgrade:hover {
-      transform: translateY(-2px) scale(1.06);
-      box-shadow: 0 8px 24px #40f6ff28, 0 1px 12px #0004;
-    }
-    .btn-disabled {
-      background: #343c52 !important;
-      color: #aeb0c8 !important;
-      cursor: not-allowed !important;
-      opacity: 0.75;
-      filter: grayscale(30%);
-      border: none;
-    }
-    .note {
-      color: #00e0a0;
-      font-size: 1.03em;
-      margin-top: 1.2em;
-      font-weight: 500;
-    }
-    /* 響應式調整：手機時單欄且大字體 */
-    @media (max-width: 699px) {
-      .pricing-cards {
-        flex-direction: column;
-        align-items: center;
-        gap: 1.3rem;
-      }
-      .pricing-card {
-        min-width: 96vw;
-        max-width: 99vw;
-        width: 99vw;
-        padding: 2.1rem 0.4rem 1.3rem 0.4rem;
-        margin-bottom: 0;
-      }
-      body, html {
-        font-size: 19px;
-      }
-      .pricing-card h3,
-      .pricing-card .price-row,
-      .pricing-card .features,
-      .pricing-card .btn,
-      .pricing-card .note {
-        font-size: 1.18em !important;
-      }
-      .price-main { font-size: 1.52em !important; }
-      .features { min-height: 7em; }
-    }
-  </style>
+  <meta charset="utf-8">
+  <title>LeiMai Pro 訂閱</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="/style.css" rel="stylesheet">
 </head>
 <body>
-  <main class="subscribe-section">
-    <h2>選擇你的訂閱方案</h2>
-    <div class="pricing-cards">
-      <!-- Pro 卡 -->
-      <div class="pricing-card pro">
-        <h3>進階版 Pro</h3>
-        <div class="price-row">
-          <span class="price-main">NT$199</span><span class="price-sub">/月</span>
-          <span class="price-divider">|</span>
-          <span class="price-year">年繳 NT$1,999</span>
-        </div>
-        <ul class="features">
-          <li>每日自動推播</li>
-          <li>BTC/ETH/ETF 六分類</li>
-          <li>持幣結構圖表</li>
-          <li>全球資產排行</li>
-          <li>獨家精華摘要</li>
-        </ul>
-        <button class="btn btn-upgrade" data-plan="pro" data-period="month">升級 Pro（月繳）</button>
-        <button class="btn btn-upgrade" data-plan="pro" data-period="year">升級 Pro（年繳）</button>
-      </div>
-      <!-- Elite 卡 -->
-      <div class="pricing-card elite disabled">
-        <div class="badge badge-coming"><i class="fas fa-lock"></i> 敬請期待</div>
-        <h3>專業版 Elite</h3>
-        <div class="price-row">
-          <span class="price-main">NT$399</span><span class="price-sub">/月</span>
-          <span class="price-divider">|</span>
-          <span class="price-year">年繳 NT$3,999</span>
-        </div>
-        <ul class="features">
-          <li>VIP 巨鯨資金動向追蹤</li>
-          <li>ETF 深度數據（折溢價、市值等）</li>
-          <li>自訂條件推播／智能預警</li>
-          <li>高階持幣結構／ETF間資金流可視化</li>
-          <li>全球資產排行／多幣種資金流查詢</li>
-        </ul>
-        <button class="btn btn-upgrade btn-disabled" disabled>即將推出</button>
-      </div>
-    </div>
+  <main class="container">
+    <h1>LeiMai Pro 訂閱</h1>
+
+    <section class="plan">
+      <h2>Pro（月繳）</h2>
+      <div class="badge badge-success">🎉 前 10 日免費</div>
+      <p>第 11 天起每月自動扣款，扣款日依你的申辦日而定。</p>
+      <p class="price">NT$199 / 月</p>
+      <button id="btnMonth">立即訂閱（月繳）</button>
+    </section>
+
+    <section class="plan">
+      <h2>Pro（年繳）</h2>
+      <div class="badge badge-success">🎉 前 10 日免費</div>
+      <p>第 11 天起每年自動扣款，扣款日依你的申辦日而定。</p>
+      <p class="price">NT$1,999 / 年</p>
+      <button id="btnYear">立即訂閱（年繳）</button>
+    </section>
+
+    <p class="note">說明：前 10 日免費為數位內容試用，首扣日將在試用期結束的隔日（UTC+8）。</p>
   </main>
-  <!-- LIFF JS，直接複製你現有那段就好 -->
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
   <script>
-    document.querySelectorAll('.btn-upgrade').forEach(btn => {
-      if (!btn.disabled) {
-        btn.addEventListener('click', async function() {
-          await liff.init({ liffId: '2007745575-JPOMYKYn' });
-          const profile = await liff.getProfile();
-          const userId = profile.userId;
-          const displayName = profile.displayName;
-          const plan = this.getAttribute('data-plan');
-          const period = this.getAttribute('data-period');
-        
-          // 先註冊會員（用戶存在時會自動忽略）
-          await fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId,
-              displayName,
-              email: '',
-              phone: ''
-            })
-          });
-        
-          // 再建立訂單
-          fetch('/api/subscribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId,
-              displayName,
-              plan,
-              period,
-              email: ''
-            })
-          })
-          .then(res => res.json())
-          .then(data => {
-            if (data.order_no) {
-              window.location.href = `/pay?order_no=${data.order_no}`;
-            } else {
-              alert('訂單建立失敗，請再試一次！');
-            }
-          });
-        });
+    async function postJSON(url, data) {
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      }).then(r => r.json());
+    }
+
+    async function startSubscribe(period) {
+      const userId = window.localStorage.getItem('userId') || 'test-user-' + Date.now();
+      window.localStorage.setItem('userId', userId);
+
+      // 1) 註冊（冪等）
+      await postJSON('/api/register', {
+        userId,
+        displayName: 'WebUser',
+        email: '',
+        phone: ''
+      });
+
+      // 2) 建單（會計算 10 日免費與首扣日）
+      const r = await postJSON('/api/subscribe', {
+        userId,
+        displayName: 'WebUser',
+        email: '',
+        plan: 'pro',
+        period // 'month' | 'year'
+      });
+
+      if (!r || !r.order_no) {
+        alert('建單失敗，請稍後再試');
+        return;
       }
-    });
+
+      // 3) 交給後端產生 NDNP 表單並自動送出
+      location.href = `/pay?order_no=${r.order_no}`;
+    }
+
+    document.getElementById('btnMonth').addEventListener('click', () => startSubscribe('month'));
+    document.getElementById('btnYear').addEventListener('click', () => startSubscribe('year'));
   </script>
-  <!-- 可選：FontAwesome CDN（只為了小鎖頭icon，已經有可略） -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css">
 </body>
 </html>

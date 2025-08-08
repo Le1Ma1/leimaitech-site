@@ -1,52 +1,43 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <title>付款結果查詢｜LeiMai Tech</title>
+  <meta charset="utf-8">
+  <title>付款結果 - LeiMai Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { background: #181c37; color: #fff; font-family: 'Noto Sans TC', sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;}
-    .result-card { background: #252545; padding: 2.5em 1.5em; border-radius: 22px; box-shadow: 0 8px 32px #0008; text-align: center;}
-    .result { font-size: 1.5em; margin-bottom: 1.2em;}
-    .loader { border: 4px solid #23244b; border-top: 4px solid #00c2ff; border-radius: 50%; width: 34px; height: 34px; animation: spin 1s linear infinite; display: inline-block;}
-    @keyframes spin {100% {transform: rotate(360deg);}}
-    .success { color: #25f489; }
-    .fail { color: #ff5277; }
-    .pending { color: #ffe084; }
-  </style>
+  <link href="/style.css" rel="stylesheet">
 </head>
 <body>
-  <div class="result-card">
-    <div id="result" class="result pending">
-      <span class="loader"></span> 付款狀態查詢中...
-    </div>
-    <div id="orderInfo"></div>
-    <a href="/" style="margin-top:1.5em; display: inline-block; color:#00c2ff;">返回首頁</a>
-  </div>
+  <main class="container">
+    <h1>付款結果</h1>
+    <div id="info"></div>
+    <div>訂單狀態：<span id="status">查詢中...</span></div>
+    <div id="more"></div>
+  </main>
+
   <script>
-    // 取得 URL 的 order_no
-    const params = new URLSearchParams(window.location.search);
-    const order_no = params.get('order_no');
-    if (!order_no) {
-      document.getElementById('result').innerHTML = '<span class="fail">未帶入訂單編號，請從正確流程付款</span>';
-    } else {
-      fetch(`/api/order-status?order_no=${order_no}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.status === 'paid') {
-            document.getElementById('result').innerHTML = '<span class="success">🎉 付款成功，訂閱已開通！</span>';
-          } else if (data.status === 'pending') {
-            document.getElementById('result').innerHTML = '<span class="pending">付款處理中，請稍後刷新或聯繫客服</span>';
-          } else {
-            document.getElementById('result').innerHTML = '<span class="fail">未完成付款或訂單不存在，請聯繫客服！</span>';
-          }
-          // 額外顯示訂單編號等資訊
-          document.getElementById('orderInfo').innerText = '訂單編號：' + order_no;
-        })
-        .catch(err => {
-          document.getElementById('result').innerHTML = '<span class="fail">查詢發生錯誤，請聯繫客服！</span>';
-        });
+    const orderNo = new URL(location.href).searchParams.get('order_no');
+    document.getElementById('info').textContent = `訂單編號：${orderNo}`;
+
+    async function poll() {
+      try {
+        const r = await fetch(`/api/order-status?order_no=${orderNo}`);
+        if (!r.ok) throw new Error('status fail');
+        const { status, order } = await r.json();
+        document.getElementById('status').textContent = status;
+
+        if (order && status === 'paid') {
+          const t = new Date(order.trial_end);
+          document.getElementById('more').innerHTML =
+            `🎉 委託建立成功，試用至 <b>${t.toLocaleString()}</b>，` +
+            `首扣日期 <b>${order.first_charge_date}</b>（之後固定此日續扣）。`;
+          return;
+        }
+      } catch (e) {
+        console.error('poll error', e);
+      }
+      setTimeout(poll, 2000);
     }
+    poll();
   </script>
 </body>
 </html>

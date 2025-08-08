@@ -19,33 +19,27 @@
       integrity="sha384-DyZ88mC6Up2uqS4h/2MQgEayRYEJ+6JSr4Y5ru82Fw91M2qGvVb3tuMk8jrLZeG7"
       crossorigin="anonymous"
     />
-    <!-- 深色 QR 卡片區自定義樣式 -->
+    <!-- 深色 QR 卡片區自定義樣式 + Pro 免費徽章 -->
     <style>
       .qr-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        background-color: #121428;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-        margin-top: 1.5rem;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background-color: #121428; border: 1px solid rgba(255,255,255,0.05);
+        padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); margin-top: 1.5rem;
       }
       .qr-container .qr-img {
-        width: 160px;
-        height: 160px;
-        margin-bottom: 1rem;
-        border-radius: 8px;
-        padding: 0.5rem;
-        background-color: #1e1e3f;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        filter: invert(1);
+        width: 160px; height: 160px; margin-bottom: 1rem; border-radius: 8px; padding: .5rem;
+        background-color: #1e1e3f; border: 1px solid rgba(255,255,255,0.05); filter: invert(1);
       }
-      .qr-container .btn {
-        margin-top: 0.5rem;
+      .qr-container .btn { margin-top: .5rem; }
+      /* 放在 Pro 卡左上角的免費試用徽章（與 Elite 卡「敬請期待」對稱） */
+      .pricing-card.pro { position: relative; }
+      .pricing-card.pro .badge-free {
+        position: absolute; top: -14px; left: 16px;
+        padding: .4rem .75rem; border-radius: 999px; font-size: .8rem; line-height: 1;
+        background: linear-gradient(135deg,#10b981,#059669); color: #fff;
+        box-shadow: 0 6px 16px rgba(0,0,0,.35); white-space: nowrap;
       }
+      .pricing-card.pro .badge-free i { margin-right: .35rem; }
     </style>
   </head>
   <body>
@@ -133,6 +127,8 @@
           <h2>訂閱方案介紹</h2>
           <div class="pricing-cards">
               <div class="pricing-card pro">
+                  <!-- 這裡新增免費試用徽章 -->
+                  <div class="badge badge-free"><i class="fas fa-gift"></i> 前 10 日免費試用｜第 11 天首扣</div>
                   <h3>進階版 <span class="pro-label">Pro</span></h3>
                   <div class="price-row">
                       <span class="price-main">NT$199</span><span class="price-sub">/月</span>
@@ -195,7 +191,7 @@
     <!-- 回到頂部與頁尾 -->
     <div id="backToTop" class="back-to-top" aria-label="回到頂部">↑</div>
     <footer>
-      <p>© 2025 LeiMai Tech . 保留所有權利</p>
+      <p>© 2025 LeiMai Tech . 保留所有權利</p>
       <nav class="footer-links">
         <a href="privacy.html">隱私權條款</a> |
         <a href="terms.html">會員服務條款</a> |
