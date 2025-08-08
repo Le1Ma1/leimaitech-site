@@ -16,6 +16,7 @@
   --color-accent: #7f5cff;
   --color-text: #f5f5fa;
   --color-muted: #9fa5c3;
+  --color-success: #16A34A;
   --radius: 12px;
   --transition-fast: 0.2s ease;
   --max-width: 1200px;
@@ -1001,7 +1002,7 @@ footer {
   margin-top: 0.5em;
   line-height: 1.7;
 }
-.timeline {
+.timeline { 
   max-width: 900px;
   margin: 0 auto;
   padding: 0;
@@ -1018,3 +1019,94 @@ footer {
 .animate-tick::before {
   animation: tickIn 0.6s cubic-bezier(.43,.78,.26,1.19) forwards;
 }
+
+/* Bubble badge for crypto-linebot */
+.badge-free{
+  background: linear-gradient(135deg,#16A34A 0%,#22C55E 60%,#34D399 100%);
+  color:#fff;
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow: 0 6px 16px rgba(22,163,74,.35), inset 0 0 0 1px rgba(255,255,255,.08);
+  border-radius: 999px;
+  padding:.4rem .75rem;
+  display:inline-flex; align-items:center; gap:.35rem;
+}
+
+/* Pro 卡泡泡置中，與右側一致且不擋字 */
+.pricing-card.pro{
+  position: relative;
+  overflow: visible;
+  padding-top: 64px;         /* 原本 32，拉高空間避免壓到標題 */
+}
+.pricing-card.pro .badge-free{
+  position: absolute;
+  top: -20px;                /* 漂在卡片上緣 */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  pointer-events: none;      /* 不阻擋點擊 */
+}
+/* 小螢幕再多給一點空間 */
+@media (max-width:640px){
+  .pricing-card.pro{ padding-top: 70px; }
+  .pricing-card.pro .badge-free{ top: -22px; }
+}
+
+/* CTA 按鈕（立即訂閱） */
+.btn-cta{
+  display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+  min-width:220px;padding:.9rem 1.6rem;border:0;border-radius:999px;
+  font-weight:800;font-size:1.05rem;color:#fff;cursor:pointer;
+  background:linear-gradient(90deg,#00c2ff 60%,#5a5aff 100%);
+  box-shadow:0 8px 28px rgba(0,60,255,.13);
+  transition:transform .16s, box-shadow .16s, opacity .16s;
+}
+.btn-cta:hover{ transform:translateY(-2px); box-shadow:0 12px 32px rgba(0,110,255,.23); }
+.btn-cta[disabled]{ opacity:.6; cursor:not-allowed; transform:none; box-shadow:none; }
+.btn-cta .spinner{
+  width:18px;height:18px;border-radius:50%;
+  border:2px solid #fff;border-right-color:transparent;animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.cta-note{margin-top:.6rem;font-size:.9rem;color:#16A34A;opacity:.95}
+
+/* 與右側徽章一致：泡泡不擋字 */
+.pricing-card.pro{position:relative;overflow:visible;padding-top:64px}
+.pricing-card.pro .badge-free{position:absolute;top:-20px;left:50%;transform:translateX(-50%);z-index:2;pointer-events:none}
+
+/* 深色主題去白化：卡片/按鈕/晶片/次要字 */
+.pricing-card, .plan{
+  background:#0E1226;
+  box-shadow:0 12px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.02);
+  border:1px solid rgba(255,255,255,.08);
+}
+.features li, .plan p, .note { color:#C9D2FF; opacity:.9; }
+
+/* CTA（避免白底） */
+.btn-cta, .subscribe-btn{
+  color:#fff; border:0;
+  background:linear-gradient(90deg,#00C2FF 55%,#5A5AFF 100%);
+  box-shadow:0 8px 28px rgba(0,80,255,.18);
+}
+.btn-cta[disabled]{opacity:.6}
+
+/* 晶片與次要按鈕（把白底改成玻璃） */
+.price-year, .badge-coming, .btn-disabled{
+  background:rgba(255,255,255,.08);
+  color:#D7DEFF;
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 6px 18px rgba(0,0,0,.25);
+}
+
+/* 泡泡徽章（與 subscribe 的綠一致） */
+.badge-success{ background: var(--color-success); color:#fff; }
+.note{ color: var(--color-success); }
+.badge-free{
+  background: linear-gradient(135deg, var(--color-success) 0%, #22C55E 60%, #34D399 100%);
+  color:#fff; border:1px solid rgba(255,255,255,.14);
+}
+
+/* === append to the end of css/style.css === */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.text-muted{opacity:.75}
+.btn .spinner{margin-right:.25rem;vertical-align:middle}
+.notice{background:#0f1126;border:1px solid #2a2d59;border-radius:12px;padding:16px 20px}

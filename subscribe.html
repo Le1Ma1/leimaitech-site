@@ -2,107 +2,99 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <title>LeiMai Pro 訂閱</title>
+  <title>LeiMai Pro 訂閱（LINE 驗證）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- 動態切換 CSS 路徑：主站走 /crypto-linebot/，後端(Render/本機)走 /css/ -->
-  <link id="theme-css" rel="stylesheet" href="">
-  <script>
-    (function() {
-      var isMainSite = location.hostname.endsWith('leimaitech.com');
-      var href = isMainSite ? '/crypto-linebot/css/style.css' : '/css/style.css';
-      document.getElementById('theme-css').setAttribute('href', href);
-    })();
-  </script>
-  <noscript>
-    <!-- 若停用 JS，預設走後端版；主站請手動改成 /crypto-linebot/css/style.css -->
-    <link rel="stylesheet" href="/css/style.css">
-  </noscript>
-
+  <link id="theme-css" rel="stylesheet" href="/css/style.css">
   <style>
-    /* 極簡保底樣式，避免載不到 CSS 完全素顏（可以保留也可刪） */
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans TC",Arial,sans-serif;margin:0;padding:24px;background:#050510;color:#f5f5fa}
-    .container{max-width:720px;margin:0 auto}
-    .plan{background:#0f1126;border-radius:12px;padding:16px 20px;margin:18px 0;box-shadow:0 4px 12px rgba(0,0,0,.35);position: relative; overflow: visible;}
-    .badge{display: inline-flex;background:#5a5aff;color:#fff; padding: .35rem .7rem; border-radius:999px;font-size:.85rem;margin-bottom:.5rem; align-items: center; line-height: 1}
-    .price{font-weight:700}
-    button{border:0;border-radius:999px;padding:.6rem 1rem}
-    .badge-success { background:#16a34a; }
-
-    /* crypto-linebot/index.html 裡 Pro 卡左上徽章也保險一下 */
-    .pricing-card.pro{ position: relative; overflow: visible; padding-top: 32px; }
-    .pricing-card.pro .badge-free{ position: absolute; top: 12px; left: 12px; }
-
-    /* 行動裝置微調 */
-    @media (max-width:640px){
-      .pricing-card.pro .badge-free{ top:10px; left:10px; }
-    }
+    /* 保底與遮罩 */
+    body{background:#050510;color:#f5f5fa}
+    .container{max-width:760px;margin:0 auto;padding:24px}
+    .plan{background:#0f1126;border-radius:12px;padding:16px 20px;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;text-decoration:none;border:1px solid #2a2d59;background:#2a2d59;color:#fff;cursor:pointer}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .spinner{display:inline-block;width:1em;height:1em;border:.2em solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .blocker{position:fixed;inset:0;background:rgba(5,5,16,.85);display:none;place-items:center;padding:24px;z-index:9999}
+    .card{max-width:520px;background:#0f1126;border:1px solid #2a2d59;border-radius:12px;padding:20px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+    .muted{opacity:.8}
+    code{background:#14162e;padding:2px 6px;border-radius:6px}
   </style>
 </head>
 <body>
-  <main class="container">
+  <div class="container">
     <h1>LeiMai Pro 訂閱</h1>
+    <p class="muted">為了提供 LINE 推播服務，<b>必須先取得你的 LINE ID</b> 後才能訂閱。</p>
 
-    <section class="plan">
-      <h2>Pro（月繳）</h2>
-      <div class="badge badge-success">🎉 前 10 日免費</div>
-      <p>第 11 天起每月自動扣款，扣款日依你的申辦日而定。</p>
-      <p class="price">NT$199 / 月</p>
-      <button id="btnMonth">立即訂閱（月繳）</button>
-    </section>
+    <div class="plan">
+      <h3>Pro（NT$199 / 月）</h3>
+      <p>10 天試用，試用結束日首扣；可隨時取消。</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <button id="btnMonth" class="btn">我要訂閱（按月）</button>
+        <button id="btnYear" class="btn" disabled title="即將推出">年繳方案（敬請期待）</button>
+      </div>
+    </div>
+  </div>
 
-    <section class="plan">
-      <h2>Pro（年繳）</h2>
-      <div class="badge badge-success">🎉 前 10 日免費</div>
-      <p>第 11 天起每年自動扣款，扣款日依你的申辦日而定。</p>
-      <p class="price">NT$1,999 / 年</p>
-      <button id="btnYear">立即訂閱（年繳）</button>
-    </section>
-
-    <p class="note">說明：前 10 日免費為數位內容試用，首扣日將在試用期結束的隔日（UTC+8）。</p>
-  </main>
+  <!-- 無 LINE uid 時的阻擋層 -->
+  <div id="blocker" class="blocker">
+    <div class="card">
+      <h3>請用 LINE 開啟此頁</h3>
+      <p class="muted">本服務需要綁定你的 LINE 帳號，用於推播白名單與通知。請在 LINE 內開啟，或按下方按鈕。</p>
+      <p>
+        <a id="openInLine" class="btn">在 LINE 中開啟</a>
+      </p>
+      <p class="muted" style="font-size:13px">如在電腦上，請拿起手機掃描你 LINE 加入好友後的「訂閱」入口（或我們提供的 LIFF 連結）。</p>
+    </div>
+  </div>
 
   <script>
-    async function postJSON(url, data) {
-      return fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      }).then(r => r.json());
+    const urlp = new URLSearchParams(location.search);
+    const SRC = urlp.get('src') || 'web';
+    const UID = urlp.get('uid') || '';
+
+    // 沒有 LINE uid → 阻擋並引導到 LIFF
+    const blocker = document.getElementById('blocker');
+    const openBtn = document.getElementById('openInLine');
+    const LIFF_ID = (window.LIFF_ID || '') || '<YOUR_LIFF_ID>'; // 也可用後端注入
+    const LIFF_URL = `https://liff.line.me/${LIFF_ID}?redirect=${encodeURIComponent('/subscribe.html')}`;
+
+    if (!UID || !/^U[a-f0-9]{32}$/i.test(UID)) {
+      blocker.style.display = 'grid';
+      // 行動裝置：使用 line://app / 桌面：使用 LIFF URL
+      const ua = navigator.userAgent.toLowerCase();
+      const isMobile = /iphone|ipad|ipod|android/.test(ua);
+      openBtn.setAttribute('href', isMobile ? `line://app/${LIFF_ID}` : LIFF_URL);
     }
 
-    async function startSubscribe(period) {
-      const userId = window.localStorage.getItem('userId') || 'test-user-' + Date.now();
-      window.localStorage.setItem('userId', userId);
+    function postJSON(url, data){
+      return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) })
+        .then(r => r.ok ? r.json() : r.json().catch(()=>({})).then(j => Promise.reject(j)));
+    }
 
-      // 1) 註冊（冪等）
-      await postJSON('/api/register', {
-        userId,
-        displayName: 'WebUser',
-        email: '',
-        phone: ''
-      });
+    async function startSubscribe(period, btn){
+      try{
+        if (!UID || !/^U[a-f0-9]{32}$/i.test(UID)) { alert('請先用 LINE 開啟，才能訂閱'); return; }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 建立訂單中…';
 
-      // 2) 建單（會計算 10 日免費與首扣日）
-      const r = await postJSON('/api/subscribe', {
-        userId,
-        displayName: 'WebUser',
-        email: '',
-        plan: 'pro',
-        period // 'month' | 'year'
-      });
+        await postJSON('/api/register', { userId: UID });
+        const r = await postJSON('/api/subscribe', { userId: UID, plan: 'pro', period });
 
-      if (!r || !r.order_no) {
-        alert('建單失敗，請稍後再試');
-        return;
+        if(!r || !r.order_no) throw new Error('建單失敗');
+        btn.innerHTML = '✅ 連線金流中…';
+        location.href = `/pay?order_no=${r.order_no}`;
+      }catch(e){
+        console.error(e); alert(e?.error || '目前無法訂閱，請稍後再試');
+        btn.disabled = false; btn.textContent = btn.dataset.label;
       }
-
-      // 3) 交給後端產生 NDNP 表單並自動送出
-      location.href = `/pay?order_no=${r.order_no}`;
     }
 
-    document.getElementById('btnMonth').addEventListener('click', () => startSubscribe('month'));
-    document.getElementById('btnYear').addEventListener('click', () => startSubscribe('year'));
+    const m = document.getElementById('btnMonth');
+    const y = document.getElementById('btnYear');
+    m.dataset.label = m.textContent; y.dataset.label = y.textContent;
+    m.addEventListener('click', ()=>startSubscribe('month', m));
+    y.addEventListener('click', ()=>startSubscribe('year', y));
   </script>
 </body>
 </html>
