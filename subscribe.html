@@ -4,7 +4,30 @@
   <meta charset="utf-8">
   <title>LeiMai Pro 訂閱</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="/style.css" rel="stylesheet">
+
+  <!-- 動態切換 CSS 路徑：主站走 /crypto-linebot/，後端(Render/本機)走 /css/ -->
+  <link id="theme-css" rel="stylesheet" href="">
+  <script>
+    (function() {
+      var isMainSite = location.hostname.endsWith('leimaitech.com');
+      var href = isMainSite ? '/crypto-linebot/css/style.css' : '/css/style.css';
+      document.getElementById('theme-css').setAttribute('href', href);
+    })();
+  </script>
+  <noscript>
+    <!-- 若停用 JS，預設走後端版；主站請手動改成 /crypto-linebot/css/style.css -->
+    <link rel="stylesheet" href="/css/style.css">
+  </noscript>
+
+  <style>
+    /* 極簡保底樣式，避免載不到 CSS 完全素顏（可以保留也可刪） */
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans TC",Arial,sans-serif;margin:0;padding:24px;background:#050510;color:#f5f5fa}
+    .container{max-width:720px;margin:0 auto}
+    .plan{background:#0f1126;border-radius:12px;padding:16px 20px;margin:18px 0;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+    .badge{display:inline-block;background:#5a5aff;color:#fff;padding:.25rem .6rem;border-radius:999px;font-size:.85rem;margin-bottom:.5rem}
+    .price{font-weight:700}
+    button{border:0;border-radius:999px;padding:.6rem 1rem}
+  </style>
 </head>
 <body>
   <main class="container">
