@@ -339,4 +339,22 @@ app.post('/api/period-webhook', bodyParser.urlencoded({ extended: false, limit: 
   }
 });
 
+// /api/register --- 只示範需要改的地方
+const { data: existed, error: selErr } =
+  await supabase.from('users').select('id').eq('id', userId).maybeSingle();
+if (selErr) { console.error('[REGISTER][select] DB error', selErr); return res.status(500).json({ error:'db_select_user' }); }
+
+if (!existed) {
+  const { error: insErr } = await supabase.from('users').insert([{
+    id: userId, display_name: displayName || null, email: email || null, phone: phone || null
+  }]);
+  if (insErr) { console.error('[REGISTER][insert] DB error', insErr); return res.status(500).json({ error:'db_insert_user' }); }
+}
+
+// /api/subscribe --- 只示範檢查區塊
+const { data: user, error: selErr2 } =
+  await supabase.from('users').select('id').eq('id', userId).maybeSingle();
+if (selErr2) { console.error('[SUBSCRIBE][select user] DB error', selErr2); return res.status(500).json({ error:'db_select_user' }); }
+if (!user) return res.status(400).json({ error: '用戶未註冊' });
+
 app.listen(PORT, () => console.log(`Server on :${PORT}`));
