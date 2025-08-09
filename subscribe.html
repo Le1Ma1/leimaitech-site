@@ -1,13 +1,15 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <title>LeiMai Pro 訂閱（LINE 驗證）</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link id="theme-css" rel="stylesheet" href="/css/style.css" />
 
-  <link id="theme-css" rel="stylesheet" href="/css/style.css">
+  <!-- 讓 LIFF 優先載入（先嘗試取 uid，失敗才顯示遮罩） -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
   <style>
-    /* 保底與遮罩 */
     body{background:#050510;color:#f5f5fa}
     .container{max-width:760px;margin:0 auto;padding:24px}
     .plan{background:#0f1126;border-radius:12px;padding:16px 20px;box-shadow:0 4px 12px rgba(0,0,0,.35)}
@@ -18,7 +20,6 @@
     .blocker{position:fixed;inset:0;background:rgba(5,5,16,.85);display:none;place-items:center;padding:24px;z-index:9999}
     .card{max-width:520px;background:#0f1126;border:1px solid #2a2d59;border-radius:12px;padding:20px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
     .muted{opacity:.8}
-    code{background:#14162e;padding:2px 6px;border-radius:6px}
   </style>
 </head>
 <body>
@@ -36,56 +37,79 @@
     </div>
   </div>
 
-  <!-- 無 LINE uid 時的阻擋層 -->
+  <!-- 只有在沒拿到 uid 時才會顯示 -->
   <div id="blocker" class="blocker">
     <div class="card">
       <h3>請用 LINE 開啟此頁</h3>
       <p class="muted">本服務需要綁定你的 LINE 帳號，用於推播白名單與通知。請在 LINE 內開啟，或按下方按鈕。</p>
-      <p>
-        <a id="openInLine" class="btn">在 LINE 中開啟</a>
-      </p>
+      <p><a id="openInLine" class="btn">在 LINE 中開啟</a></p>
       <p class="muted" style="font-size:13px">如在電腦上，請拿起手機掃描你 LINE 加入好友後的「訂閱」入口（或我們提供的 LIFF 連結）。</p>
     </div>
   </div>
 
   <script>
-    const urlp = new URLSearchParams(location.search);
-    const SRC = urlp.get('src') || 'web';
-    const UID = urlp.get('uid') || '';
+    // === 你的 LIFF ID（照你後台） ===
+    const LIFF_ID = '2007745575-JPOMYKYn';
 
-    // 沒有 LINE uid → 阻擋並引導到 LIFF
+    // 若未來把前端搬去 Cloudflare，這行改為 Render API 的完整網域即可
+    const API_BASE = ''; // 同網域就留空字串
+
     const blocker = document.getElementById('blocker');
     const openBtn = document.getElementById('openInLine');
-    const LIFF_ID = (window.LIFF_ID || '') || '2007745575-JPOMYKYn'; // 也可用後端注入
-    const LIFF_URL = `https://liff.line.me/${LIFF_ID}?redirect=${encodeURIComponent('/subscribe.html')}`;
 
-    if (!UID || !/^U[a-f0-9]{32}$/i.test(UID)) {
-      blocker.style.display = 'grid';
-      // 行動裝置：使用 line://app / 桌面：使用 LIFF URL
-      const ua = navigator.userAgent.toLowerCase();
-      const isMobile = /iphone|ipad|ipod|android/.test(ua);
-      openBtn.setAttribute('href', isMobile ? `line://app/${LIFF_ID}` : LIFF_URL);
+    function setOpenInLineFallback(){
+      const url = new URL(location.href);
+      const isMobile = /iphone|ipad|ipod|android/i.test(navigator.userAgent);
+      openBtn.setAttribute('href', isMobile ? `line://app/${LIFF_ID}` : `https://liff.line.me/${LIFF_ID}?redirect=${encodeURIComponent(url.pathname + url.search)}`);
     }
 
+    // 先嘗試用 LIFF 拿到 userId，成功就把 uid 寫進網址
+    (async function ensureUid(){
+      const p = new URLSearchParams(location.search);
+      const hasUid = /^U[a-f0-9]{32}$/i.test(p.get('uid') || '');
+      if (hasUid) return; // 已經有 uid，直接走後續流程
+
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+        const prof = await liff.getProfile();
+        if (prof?.userId) {
+          p.set('src', 'line');
+          p.set('uid', prof.userId);
+          location.replace(location.pathname + '?' + p.toString());
+          return;
+        }
+      } catch (e) {
+        console.warn('LIFF 取得 userId 失敗', e);
+      }
+      // 走到這裡代表沒拿到 uid → 顯示遮罩＋退路按鈕
+      setOpenInLineFallback();
+      blocker.style.display = 'grid';
+    })();
+
     function postJSON(url, data){
-      return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) })
-        .then(r => r.ok ? r.json() : r.json().catch(()=>({})).then(j => Promise.reject(j)));
+      return fetch((API_BASE || '') + url, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
+      }).then(r => r.ok ? r.json() : r.json().catch(()=>({})).then(j => Promise.reject(j)));
     }
 
     async function startSubscribe(period, btn){
+      const uid = new URLSearchParams(location.search).get('uid') || '';
+      if (!/^U[a-f0-9]{32}$/i.test(uid)) { alert('請先用 LINE 開啟，才能訂閱'); return; }
+
       try{
-        if (!UID || !/^U[a-f0-9]{32}$/i.test(UID)) { alert('請先用 LINE 開啟，才能訂閱'); return; }
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> 建立訂單中…';
 
-        await postJSON('/api/register', { userId: UID });
-        const r = await postJSON('/api/subscribe', { userId: UID, plan: 'pro', period });
+        await postJSON('/api/register', { userId: uid });
+        const r = await postJSON('/api/subscribe', { userId: uid, plan:'pro', period });
+        if(!r?.order_no) throw new Error('建單失敗');
 
-        if(!r || !r.order_no) throw new Error('建單失敗');
         btn.innerHTML = '✅ 連線金流中…';
-        location.href = `/pay?order_no=${r.order_no}`;
+        location.href = (API_BASE || '') + `/pay?order_no=${r.order_no}`;
       }catch(e){
-        console.error(e); alert(e?.error || '目前無法訂閱，請稍後再試');
+        console.error(e);
+        alert(e?.error || '目前無法訂閱，請稍後再試');
         btn.disabled = false; btn.textContent = btn.dataset.label;
       }
     }
