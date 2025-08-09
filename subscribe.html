@@ -56,7 +56,7 @@
     // 沒有 LINE uid → 阻擋並引導到 LIFF
     const blocker = document.getElementById('blocker');
     const openBtn = document.getElementById('openInLine');
-    const LIFF_ID = (window.LIFF_ID || '') || '<YOUR_LIFF_ID>'; // 也可用後端注入
+    const LIFF_ID = (window.LIFF_ID || '') || '2007745575-JPOMYKYn'; // 也可用後端注入
     const LIFF_URL = `https://liff.line.me/${LIFF_ID}?redirect=${encodeURIComponent('/subscribe.html')}`;
 
     if (!UID || !/^U[a-f0-9]{32}$/i.test(UID)) {
