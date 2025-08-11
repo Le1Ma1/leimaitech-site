@@ -8,7 +8,7 @@ const qs = require('qs');
 const crypto = require('crypto');
 const path = require('path');
 
-const supabase = require('./db'); // 你的 Supabase client
+const supabase = require('./db'); // Supabase client
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -49,7 +49,7 @@ app.use(express.static(path.join(__dirname), {
   extensions: ['html']   // /subscribe -> /subscribe.html, /payment-result -> /payment-result.html
 }));
 
-// 顯式對應頁面（避免代理/快取出岔）
+// 顯式對應頁面
 const send = (p) => (req, res) => res.sendFile(path.join(__dirname, p));
 app.get(['/subscribe', '/subscribe/'], send('subscribe.html'));
 app.get(['/payment-result', '/payment-result/'], send('payment-result.html'));
@@ -70,7 +70,7 @@ function aesDecryptHexToText(hex, key, iv){
   decipher.setAutoPadding(true);
   let out = decipher.update(hex, 'hex', 'utf8'); out += decipher.final('utf8'); return out;
 }
-const isLineUserId = (s) => typeof s === 'string' && /^U[a-f0-9]{32}$/i.test(s); // LINE userId 格式
+const isLineUserId = (s) => typeof s === 'string' && /^U[a-f0-9]{32}$/i.test(s);
 const sha256U = (s) => crypto.createHash('sha256').update(s).digest('hex').toUpperCase();
 
 // ===== 使用者註冊（必須是 LINE userId）=====
@@ -167,7 +167,7 @@ app.get('/pay', async (req, res) => {
       TimeStamp,
       Version: '1.5',
       LangType: 'zh-Tw',
-      MerOrderNo: order_no,                         // 一些版本用 MerchantOrderNo，也能接受
+      MerOrderNo: order_no,                         // 有些版本用 MerchantOrderNo
       ProdDesc: 'Leimaitech Pro Subscription',
       PeriodAmt: order.amount,
       PeriodType: order.period_type,                // 'M' or 'Y'
@@ -241,7 +241,7 @@ app.post('/api/period-webhook', bodyParser.urlencoded({ extended: false, limit: 
       const ok = candidates.some(str => sha256U(str) === providedSha);
       if (!ok) {
         console.warn('[WEBHOOK] SHA mismatch', { providedSha });
-        return res.status(200).send('IGNORED'); // 不更新狀態，避免重送風暴
+        return res.status(200).send('IGNORED'); // 不更新狀態
       }
     }
 
@@ -338,23 +338,5 @@ app.post('/api/period-webhook', bodyParser.urlencoded({ extended: false, limit: 
     console.error('[WEBHOOK] error', e); res.status(500).send('Server Error');
   }
 });
-
-// /api/register --- 只示範需要改的地方
-const { data: existed, error: selErr } =
-  await supabase.from('users').select('id').eq('id', userId).maybeSingle();
-if (selErr) { console.error('[REGISTER][select] DB error', selErr); return res.status(500).json({ error:'db_select_user' }); }
-
-if (!existed) {
-  const { error: insErr } = await supabase.from('users').insert([{
-    id: userId, display_name: displayName || null, email: email || null, phone: phone || null
-  }]);
-  if (insErr) { console.error('[REGISTER][insert] DB error', insErr); return res.status(500).json({ error:'db_insert_user' }); }
-}
-
-// /api/subscribe --- 只示範檢查區塊
-const { data: user, error: selErr2 } =
-  await supabase.from('users').select('id').eq('id', userId).maybeSingle();
-if (selErr2) { console.error('[SUBSCRIBE][select user] DB error', selErr2); return res.status(500).json({ error:'db_select_user' }); }
-if (!user) return res.status(400).json({ error: '用戶未註冊' });
 
 app.listen(PORT, () => console.log(`Server on :${PORT}`));
