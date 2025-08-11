@@ -212,7 +212,7 @@ app.get('/pay', async (req, res) => {
       PeriodType: order.period_type,
       PeriodPoint: order.period_point,
       PeriodStartType: '1',
-      PeriodTimes: 999,
+      PeriodTimes: 99,
       PayerEmail: order.email || 'test@example.com',
       EmailModify: 1,
       NotifyURL: process.env.PERIOD_NOTIFY_URL,
