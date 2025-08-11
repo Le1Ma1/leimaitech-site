@@ -64,8 +64,11 @@ app.post(['/payment-result', '/payment-result.html'], (req, res) => {
   const orderNo =
     req.body?.MerOrderNo ||
     req.body?.MerchantOrderNo ||
+    req.body?.Result?.MerOrderNo ||
     req.body?.order_no ||
-    '';
+    req.query?.order_no || '';   // ← 加上這個 fallback
+
+  console.log('[PAYMENT RESULT POST]', { bodyKeys: Object.keys(req.body || {}), query: req.query, orderNo });
   const q = orderNo ? `?order_no=${encodeURIComponent(orderNo)}` : '';
   res.redirect(303, `/payment-result.html${q}`);
 });
