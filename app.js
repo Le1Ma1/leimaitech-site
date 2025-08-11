@@ -53,6 +53,7 @@ app.use(express.static(path.join(__dirname), { extensions: ['html'] }));
 
 // 顯式對應頁
 const send = p => (_, res) => res.sendFile(path.join(__dirname, p));
+app.all(['/payment-result', '/payment-result/', '/payment-result.html'], send('payment-result.html'));
 app.get(['/subscribe', '/subscribe/'], send('subscribe.html'));
 app.get(['/payment-result', '/payment-result/'], send('payment-result.html'));
 app.get(['/crypto-linebot', '/crypto-linebot/'], send('crypto-linebot/index.html'));
