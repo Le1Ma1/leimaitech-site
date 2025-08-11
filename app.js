@@ -215,6 +215,8 @@ app.get('/pay', async (req, res) => {
       PeriodTimes: 99,
       PayerEmail: order.email || 'test@example.com',
       EmailModify: 1,
+      PaymentInfo: 'Y', // 顯示付款人資訊
+      OrderInfo: 'N',   // 隱藏收件人/地址區塊
       NotifyURL: process.env.PERIOD_NOTIFY_URL,
       ReturnURL: `${process.env.RETURN_URL_BASE || 'https://leimaitech.com'}/payment-result.html?order_no=${order_no}`
     };
