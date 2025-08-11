@@ -52,14 +52,26 @@ app.use(bodyParser.urlencoded({ extended: false, limit: '1mb' }));
 app.use(express.static(path.join(__dirname), { extensions: ['html'] }));
 
 // 顯式對應頁
-const send = p => (_, res) => res.sendFile(path.join(__dirname, p));
-app.all(['/payment-result', '/payment-result/', '/payment-result.html'], send('payment-result.html'));
+const send = p => (req, res) => res.sendFile(path.join(__dirname, p));
+
 app.get(['/subscribe', '/subscribe/'], send('subscribe.html'));
-app.get(['/payment-result', '/payment-result/'], send('payment-result.html'));
+
+// 支援結果頁 GET（使用我們在 /pay 裝上的 ?order_no=...）
+app.get(['/payment-result', '/payment-result/', '/payment-result.html'], send('payment-result.html'));
+
+// 兼容藍新回 POST 的情況：把 POST 參數轉成查詢參數後 303 導回結果頁
+app.post(['/payment-result', '/payment-result.html'], (req, res) => {
+  const orderNo =
+    req.body?.MerOrderNo ||
+    req.body?.MerchantOrderNo ||
+    req.body?.order_no ||
+    '';
+  const q = orderNo ? `?order_no=${encodeURIComponent(orderNo)}` : '';
+  res.redirect(303, `/payment-result.html${q}`);
+});
+
 app.get(['/crypto-linebot', '/crypto-linebot/'], send('crypto-linebot/index.html'));
 
-app.get('/healthz', (_,res)=>res.json({ok:true, env:process.env.NODE_ENV||'dev'}));
-app.get('/readyz',  (_,res)=>res.json({ready:true}));
 
 // ===== 小工具 =====
 function addDays(d, days){ const x=new Date(d.getTime()); x.setDate(x.getDate()+days); return x; }
