@@ -176,7 +176,7 @@ app.get('/pay', async (req, res) => {
       PeriodTimes: 99,
       PayerEmail: order.email || 'test@example.com',
       EmailModify: 1,
-      PaymentInfo: 'N', // 顯示付款人資訊
+      PaymentInfo: 'N', // 關閉付款人資訊
       OrderInfo: 'N',   // 隱藏收件人/地址
       NotifyURL: process.env.PERIOD_NOTIFY_URL,
       ReturnURL: `${process.env.RETURN_URL_BASE || 'https://leimaitech.com'}/payment-result.html?order_no=${order_no}`
@@ -298,6 +298,24 @@ app.post('/api/period-webhook', bodyParser.urlencoded({ extended: false, limit: 
         raw_payload: result
       }]);
 
+      // ← 在這裡接上「加白名單」呼叫（有訂單才做，冪等）
+      if (order) {
+        await callBot(
+          process.env.BOT_UPSERT_URL,
+          {
+            provider: 'line',
+            user_id: order.user_id,
+            plan: 'pro',
+            order_no: merOrderNo,
+            period_no: periodNo || null,
+            access_until: order.trial_end   // 首次授權用試用結束；之後續扣會往後推
+          },
+          eventHash || merOrderNo          // 冪等鍵
+        );
+      }
+
+console.log(`[WEBHOOK] OK ${merOrderNo} → paid / trialing`);
+
       console.log(`[WEBHOOK] OK ${merOrderNo} → paid / trialing`);
     } else {
       await supabase.from('orders').update({ status: 'failed' }).eq('order_no', merOrderNo);
@@ -308,6 +326,56 @@ app.post('/api/period-webhook', bodyParser.urlencoded({ extended: false, limit: 
     await supabase.from('webhook_events').update({ processed: true }).eq('event_hash', eventHash);
     res.status(200).send('OK');
   }catch(e){ console.error('[WEBHOOK] error', e); res.status(500).send('Server Error'); }
+});
+
+// ===== BOT 介接 =====
+const GRACE_DAYS = Number(process.env.GRACE_DAYS || 3); // 寬限天數，預設 3
+function hmac(body){
+  return crypto.createHmac('sha256', process.env.BOT_SECRET || '')
+               .update(body).digest('hex');
+}
+async function callBot(url, payload, idemKey){
+  if (!url) return false;
+  const body = JSON.stringify({ ts: Math.floor(Date.now()/1000), ...payload });
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Signature': hmac(body),
+      'X-Idempotency-Key': idemKey || payload.order_no || payload.user_id
+    },
+    body,
+    signal: AbortSignal.timeout(Number(process.env.BOT_TIMEOUT_MS || 4000))
+  });
+  return res.ok;
+}
+
+// ===== 每日對帳：過期或取消就移除白名單 =====
+app.post('/cron/reconcile', async (req, res) => {
+  if ((req.query.token || '') !== process.env.CRON_TOKEN) return res.sendStatus(403);
+  const now = Date.now(), graceMs = GRACE_DAYS * 86400000;
+
+  const { data: subs, error } = await supabase
+    .from('subscriptions')
+    .select('user_id,status,current_period_end');
+
+  if (error) { console.error('[CRON] db error', error); return res.status(500).json({ error: 'db' }); }
+
+  let removed = 0;
+  for (const s of subs || []) {
+    const end = s.current_period_end ? new Date(s.current_period_end).getTime() : 0;
+    const keep = (s.status === 'trialing' || s.status === 'active' || s.status === 'past_due')
+              && (end + graceMs > now);
+    if (!keep) {
+      const ok = await callBot(process.env.BOT_REMOVE_URL, {
+        provider: 'line',
+        user_id: s.user_id,
+        reason: s.status === 'canceled' ? 'canceled' : 'expired'
+      }, s.user_id);
+      if (ok) removed++;
+    }
+  }
+  res.json({ ok: true, checked: (subs || []).length, removed, grace_days: GRACE_DAYS });
 });
 
 app.listen(PORT, () => console.log(`Server on :${PORT}`));
