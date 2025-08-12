@@ -5,6 +5,10 @@
   <title>付款結果 - LeiMai Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="/css/style.css" rel="stylesheet">
+  <style>
+    body{background:#070814;color:#fff;font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto}
+    .container{max-width:720px;margin:0 auto;padding:28px}
+  </style>
 </head>
 <body>
   <main class="container">
@@ -20,7 +24,7 @@
 
     async function poll() {
       try {
-        const r = await fetch(`/api/order-status?order_no=${orderNo}`);
+        const r = await fetch(`/api/order-status?order_no=${encodeURIComponent(orderNo)}`, { cache:'no-store' });
         if (!r.ok) throw new Error('status fail');
         const { status, order } = await r.json();
         document.getElementById('status').textContent = status;
@@ -28,14 +32,11 @@
         if (order && status === 'paid') {
           const t = new Date(order.trial_end);
           document.getElementById('more').innerHTML =
-            `🎉 委託建立成功，試用至 <b>${t.toLocaleString()}</b>，` +
-            `首扣日期 <b>${order.first_charge_date}</b>（之後固定此日續扣）。`;
+            `🎉 委託建立成功，試用至 <b>${t.toLocaleString()}</b>，首扣日期 <b>${order.first_charge_date}</b>。`;
           return;
         }
-      } catch (e) {
-        console.error('poll error', e);
-      }
-      setTimeout(poll, 2000);
+      } catch (e) { console.error('poll error', e); }
+      setTimeout(poll, 2500);
     }
     poll();
   </script>

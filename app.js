@@ -56,25 +56,21 @@ const send = p => (req, res) => res.sendFile(path.join(__dirname, p));
 
 app.get(['/subscribe', '/subscribe/'], send('subscribe.html'));
 
-// 支援結果頁 GET（使用我們在 /pay 裝上的 ?order_no=...）
+// 結果頁：GET 顯示，POST（藍新回跳）轉 303 帶上 ?order_no
 app.get(['/payment-result', '/payment-result/', '/payment-result.html'], send('payment-result.html'));
-
-// 兼容藍新回 POST 的情況：把 POST 參數轉成查詢參數後 303 導回結果頁
 app.post(['/payment-result', '/payment-result.html'], (req, res) => {
   const orderNo =
     req.body?.MerOrderNo ||
     req.body?.MerchantOrderNo ||
     req.body?.Result?.MerOrderNo ||
     req.body?.order_no ||
-    req.query?.order_no || '';   // ← 加上這個 fallback
-
+    req.query?.order_no || '';
   console.log('[PAYMENT RESULT POST]', { bodyKeys: Object.keys(req.body || {}), query: req.query, orderNo });
   const q = orderNo ? `?order_no=${encodeURIComponent(orderNo)}` : '';
   res.redirect(303, `/payment-result.html${q}`);
 });
 
 app.get(['/crypto-linebot', '/crypto-linebot/'], send('crypto-linebot/index.html'));
-
 
 // ===== 小工具 =====
 function addDays(d, days){ const x=new Date(d.getTime()); x.setDate(x.getDate()+days); return x; }
@@ -91,60 +87,39 @@ function aesDecryptHexToText(hex, key, iv){
 const isLineUserId = s => typeof s === 'string' && /^U[a-f0-9]{32}$/i.test(s);
 const sha256U = s => crypto.createHash('sha256').update(s).digest('hex').toUpperCase();
 
-// ===== 使用者註冊（僅接受 LINE userId）=====
+// ===== 使用者註冊 =====
 app.post('/api/register', async (req, res) => {
   try{
     const { userId, displayName, email, phone } = req.body || {};
-    if (!isLineUserId(userId)) {
-      console.warn('[REGISTER] 非 LINE userId 拒絕:', userId);
-      return res.status(400).json({ error: '請用 LINE 開啟並取得 LINE userId 後再註冊' });
-    }
+    if (!isLineUserId(userId)) return res.status(400).json({ error: '請用 LINE 開啟並取得 LINE userId 後再註冊' });
+
     const { data: existed, error: selErr } =
       await supabase.from('users').select('id').eq('id', userId).maybeSingle();
-    if (selErr) {
-      console.error('[REGISTER][select] DB error', selErr);
-      return res.status(500).json({ error: 'db_select_user' });
-    }
+    if (selErr) return res.status(500).json({ error: 'db_select_user' });
+
     if (!existed) {
-      const { error: insErr } = await supabase.from('users').insert([{
-        id: userId, display_name: displayName || null, email: email || null, phone: phone || null
-      }]);
-      if (insErr) {
-        console.error('[REGISTER][insert] DB error', insErr);
-        return res.status(500).json({ error: 'db_insert_user' });
-      }
+      const { error: insErr } = await supabase.from('users').insert([{ id:userId, display_name:displayName||null, email:email||null, phone:phone||null }]);
+      if (insErr) return res.status(500).json({ error: 'db_insert_user' });
       console.log(`[REGISTER] 新增用戶: ${userId}`);
     } else {
       console.log(`[REGISTER] 已存在: ${userId}`);
     }
-    res.json({ ok: true, userId });
-  }catch(e){
-    console.error('[REGISTER] error', e); res.status(500).json({ error: 'Server error' });
-  }
+    res.json({ ok:true, userId });
+  }catch(e){ console.error('[REGISTER] error', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-// ===== 建單（保險起見：查無就先 upsert）=====
+// ===== 建單（支持月/年）=====
 app.post('/api/subscribe', async (req, res) => {
   try{
     const { userId, plan='pro', period='month', email } = req.body || {};
-    if (!isLineUserId(userId)) {
-      console.warn('[SUBSCRIBE] 非 LINE userId 拒絕:', userId);
-      return res.status(400).json({ error: '缺少有效的 LINE userId' });
-    }
+    if (!isLineUserId(userId)) return res.status(400).json({ error: '缺少有效的 LINE userId' });
 
-    // 讀寫一致性保護：maybeSingle + 自動補建
-    const { data: user, error: selErr } =
+    const { data:user, error:selErr } =
       await supabase.from('users').select('id').eq('id', userId).maybeSingle();
-    if (selErr) {
-      console.error('[SUBSCRIBE][select user] DB error', selErr);
-      return res.status(500).json({ error: 'db_select_user' });
-    }
+    if (selErr) return res.status(500).json({ error: 'db_select_user' });
     if (!user) {
-      const { error: insErr } = await supabase.from('users').insert([{ id: userId, email: email || null }]);
-      if (insErr) {
-        console.error('[SUBSCRIBE][insert user] DB error', insErr);
-        return res.status(400).json({ error: '用戶未註冊' });
-      }
+      const { error: insErr } = await supabase.from('users').insert([{ id:userId, email:email||null }]);
+      if (insErr) return res.status(400).json({ error: '用戶未註冊' });
     }
 
     const Amt = period === 'year' ? 1999 : 199;
@@ -155,40 +130,26 @@ app.post('/api/subscribe', async (req, res) => {
 
     const PeriodType = (period === 'year') ? 'Y' : 'M';
     const PeriodPoint = PeriodType === 'M'
-      ? String(firstChargeDate.getDate()).padStart(2, '0')                   // 月繳：日
-      : `${String(firstChargeDate.getMonth()+1).padStart(2,'0')}${String(firstChargeDate.getDate()).padStart(2,'0')}`; // 年繳：MMDD
+      ? String(firstChargeDate.getDate()).padStart(2,'0')                       // 月：日
+      : `${String(firstChargeDate.getMonth()+1).padStart(2,'0')}${String(firstChargeDate.getDate()).padStart(2,'0')}`; // 年：MMDD
 
     const order_no = `LMAI${Date.now()}${Math.floor(Math.random()*1000)}`;
     const { error: orderErr } = await supabase.from('orders').insert([{
-      order_no,
-      user_id: userId,
-      plan,
-      period,
-      status: 'pending',
-      amount: Amt,
-      currency: 'TWD',
-      email: email || null,
-      trial_days: trialDays,
-      trial_start: now.toISOString(),
-      trial_end: trialEnd.toISOString(),
+      order_no, user_id:userId, plan, period, status:'pending',
+      amount:Amt, currency:'TWD', email:email||null,
+      trial_days:trialDays, trial_start:now.toISOString(), trial_end:trialEnd.toISOString(),
       first_charge_date: yyyymmdd(firstChargeDate),
-      period_type: PeriodType,
-      period_point: PeriodPoint,
+      period_type: PeriodType, period_point: PeriodPoint,
       created_at: now.toISOString(),
     }]);
-    if (orderErr) {
-      console.error('[SUBSCRIBE][insert order] DB error', orderErr);
-      return res.status(500).json({ error: 'db_insert_order' });
-    }
+    if (orderErr) return res.status(500).json({ error:'db_insert_order' });
 
     console.log(`[SUBSCRIBE] 建單: ${order_no} LINE:${userId} Amt:${Amt} 首扣:${yyyymmdd(firstChargeDate)} PType:${PeriodType} PPoint:${PeriodPoint}`);
-    res.json({ message: '訂單已建立', order_no });
-  }catch(e){
-    console.error('[SUBSCRIBE] error', e); res.status(500).json({ error: 'Server error' });
-  }
+    res.json({ message:'訂單已建立', order_no });
+  }catch(e){ console.error('[SUBSCRIBE] error', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-// ===== 產生定期定額表單 =====
+// ===== 產生定期定額表單（隱收件人；只顯示付款人）=====
 app.get('/pay', async (req, res) => {
   try{
     const { order_no } = req.query;
@@ -216,7 +177,7 @@ app.get('/pay', async (req, res) => {
       PayerEmail: order.email || 'test@example.com',
       EmailModify: 1,
       PaymentInfo: 'Y', // 顯示付款人資訊
-      OrderInfo: 'N',   // 隱藏收件人/地址區塊
+      OrderInfo: 'N',   // 隱藏收件人/地址
       NotifyURL: process.env.PERIOD_NOTIFY_URL,
       ReturnURL: `${process.env.RETURN_URL_BASE || 'https://leimaitech.com'}/payment-result.html?order_no=${order_no}`
     };
@@ -232,13 +193,12 @@ app.get('/pay', async (req, res) => {
       </form>
       <script>document.getElementById('periodPayForm').submit();</script>
     `);
-  }catch(e){
-    console.error('[PERIOD PAY] error', e); res.status(500).send('Server error');
-  }
+  }catch(e){ console.error('[PERIOD PAY] error', e); res.status(500).send('Server error'); }
 });
 
-// ===== 訂單狀態查詢 =====
+// ===== 訂單狀態查詢（禁快取）=====
 app.get('/api/order-status', async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   const { order_no } = req.query;
   if (!order_no) return res.status(400).json({ error: 'missing order_no' });
   const { data: order } = await supabase.from('orders').select('*').eq('order_no', order_no).maybeSingle();
@@ -311,7 +271,7 @@ app.post('/api/period-webhook', bodyParser.urlencoded({ extended: false, limit: 
           current_period_end: order.trial_end,
           period_type: order.period_type,
           period_point: order.period_point,
-          period_times: 999,
+          period_times: 99,
           gateway: 'newebpay',
           gateway_period_no: periodNo
         };
@@ -347,9 +307,7 @@ app.post('/api/period-webhook', bodyParser.urlencoded({ extended: false, limit: 
 
     await supabase.from('webhook_events').update({ processed: true }).eq('event_hash', eventHash);
     res.status(200).send('OK');
-  }catch(e){
-    console.error('[WEBHOOK] error', e); res.status(500).send('Server Error');
-  }
+  }catch(e){ console.error('[WEBHOOK] error', e); res.status(500).send('Server Error'); }
 });
 
 app.listen(PORT, () => console.log(`Server on :${PORT}`));
