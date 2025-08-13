@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
-  <title>LeiMai Pro 訂閱（LINE 驗證）</title>
+  <title>LeiMai Pro 訂閱</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link id="theme-css" rel="stylesheet" href="/css/style.css" />
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -10,14 +10,14 @@
     :root{--bg:#070814;--card:#0f1126;--accent:#5561ff;--muted:#a9adcc}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#101446,transparent),var(--bg);color:#fff;font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto}
     .container{max-width:820px;margin:0 auto;padding:28px}
-    h1{font-size:28px;margin:8px 0 16px}
+    h1{font-size:28px;margin:8px 0 12px}
     .sub{color:var(--muted);margin:0 0 20px}
     .grid{display:grid;grid-template-columns:1fr;gap:14px}
     @media(min-width:720px){.grid{grid-template-columns:1fr 1fr}}
     .card{background:linear-gradient(180deg,#0f1126,rgba(9,10,25,.9));border:1px solid rgba(120,130,255,.16);border-radius:16px;padding:20px;box-shadow:0 8px 28px rgba(0,0,0,.5)}
     .price{font-size:30px;margin:6px 0 2px}
     .muted{color:var(--muted)}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 16px;border-radius:12px;border:1px solid rgba(120,130,255,.35);background:var(--accent);color:#fff;cursor:pointer;min-width:140px;transition:.2s}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 16px;border-radius:12px;border:1px solid rgba(120,130,255,.35);background:var(--accent);color:#fff;cursor:pointer;min-width:160px;transition:.2s;text-decoration:none}
     .btn:hover{filter:brightness(1.05)}.btn:disabled{opacity:.6;cursor:not-allowed}
     .spinner{display:inline-block;width:1em;height:1em;border:.2em solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
@@ -28,20 +28,20 @@
 <body>
   <div class="container">
     <h1>LeiMai Pro 訂閱</h1>
-    <p class="sub">必須先取得你的 LINE ID 才能訂閱。完成後自動加入推播白名單。</p>
+    <p class="sub">用 LINE 登入後即可訂閱。含 <strong>10 天免費試用</strong>，期間可隨時取消；完成後會自動開通推播。</p>
 
     <div class="grid">
       <div class="card">
         <h3>月訂閱</h3>
         <div class="price">NT$199 <span class="muted">/ 月</span></div>
-        <p class="muted">10 天試用，試用結束日首扣；之後每月同日自動續扣。</p>
+        <p class="muted">試用結束日首扣；之後每月同日自動續扣。</p>
         <button id="btnMonth" class="btn">我要訂閱（按月）</button>
       </div>
 
       <div class="card">
         <h3>年訂閱</h3>
         <div class="price">NT$1999 <span class="muted">/ 年</span></div>
-        <p class="muted">同享 10 天試用；首年結束前可隨時取消。</p>
+        <p class="muted">同享 10 天試用；一年內可隨時取消，不綁約。</p>
         <button id="btnYear" class="btn">我要訂閱（按年）</button>
       </div>
     </div>
@@ -50,23 +50,25 @@
   <!-- 只有在沒拿到 uid 時才會顯示 -->
   <div id="blocker" class="blocker">
     <div class="card block">
-      <h3>請在 LINE App 中開啟</h3>
-      <p class="muted">需綁定 LINE 帳號以完成驗證。若目前在電腦版，請改用手機 LINE 或掃描官方提供的 LIFF 連結。</p>
-      <p><a id="openInLine" class="btn">在 LINE 中開啟</a></p>
+      <h3>請用 LINE 開啟此頁</h3>
+      <p class="muted">為了綁定你的帳號，需要在 LINE App 內開啟。若目前在電腦上，請改用手機開啟或點擊下方按鈕。</p>
+      <p><a id="openInLine" class="btn" href="#" rel="noopener">在 LINE 中開啟</a></p>
     </div>
   </div>
 
   <script>
-    const LIFF_ID = '2007745575-JPOMYKYn';
-    const API_BASE = '';
+    // === 基本設定（同網域呼叫 API）===
+    const LIFF_ID  = '2007745575-JPOMYKYn';
+    const API_BASE = ''; // 留空 = 用當前網域（建議放在 api 子網域上）
 
+    // === 若不在 LINE / 取不到 uid，提供一鍵在 LINE 開啟 ===
     const blocker = document.getElementById('blocker');
     const openBtn = document.getElementById('openInLine');
 
     function setOpenInLineFallback(){
-      const url = new URL(location.href);
       const isMobile = /iphone|ipad|ipod|android/i.test(navigator.userAgent);
-      openBtn.setAttribute('href', isMobile ? `line://app/${LIFF_ID}` : `https://liff.line.me/${LIFF_ID}?redirect=${encodeURIComponent(url.pathname + url.search)}`);
+      const here = location.href; // 直接把當前網址丟給 LIFF，回來時會保留查詢參數
+      openBtn.href = isMobile ? `line://app/${LIFF_ID}` : `https://liff.line.me/${LIFF_ID}?redirectUri=${encodeURIComponent(here)}`;
     }
 
     (async function ensureUid(){
@@ -78,7 +80,7 @@
         if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
         const prof = await liff.getProfile();
         if (prof?.userId) {
-          p.set('src', 'line'); p.set('uid', prof.userId);
+          p.set('src','line'); p.set('uid', prof.userId);
           location.replace(location.pathname + '?' + p.toString());
           return;
         }
@@ -86,38 +88,41 @@
       setOpenInLineFallback(); blocker.style.display = 'grid';
     })();
 
+    // === API 小工具 ===
     function postJSON(url, data){
       return fetch((API_BASE || '') + url, {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data),
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(data),
         cache:'no-store'
-      }).then(r => r.ok ? r.json() : r.json().catch(()=>({})).then(j => Promise.reject(j)));
+      }).then(r => r.ok ? r.json()
+                        : r.json().catch(()=>({})).then(j => Promise.reject(j)));
     }
 
+    // === 建單 → 轉跳藍新 ===
     async function startSubscribe(period, btn){
       const uid = new URLSearchParams(location.search).get('uid') || '';
-      if (!/^U[a-f0-9]{32}$/i.test(uid)) { alert('請先用 LINE 開啟，才能訂閱'); return; }
+      if (!/^U[a-f0-9]{32}$/i.test(uid)) { alert('請先於 LINE 中開啟此頁，再進行訂閱'); return; }
 
       try{
         btn.disabled = true; btn.dataset.label = btn.textContent;
         btn.innerHTML = '<span class="spinner"></span> 建立訂單中…';
 
-        await postJSON('/api/register', { userId: uid });
+        await postJSON('/api/register',  { userId: uid });
         const r = await postJSON('/api/subscribe', { userId: uid, plan:'pro', period });
-        if(!r?.order_no) throw new Error('建單失敗');
+        if (!r?.order_no) throw new Error('建單失敗，請稍後再試');
 
-        btn.innerHTML = '✅ 連線金流中…';
-        location.href = (API_BASE || '') + `/pay?order_no=${r.order_no}`;
+        btn.innerHTML = '✅ 前往付款頁…';
+        location.href = (API_BASE || '') + `/pay?order_no=${encodeURIComponent(r.order_no)}`;
       }catch(e){
         console.error(e);
-        alert(e?.error || '目前無法訂閱，請稍後再試');
+        alert(e?.error || '目前忙碌，請稍後再試');
         btn.disabled = false; btn.textContent = btn.dataset.label || '再試一次';
       }
     }
 
-    const m = document.getElementById('btnMonth');
-    const y = document.getElementById('btnYear');
-    m.addEventListener('click', ()=>startSubscribe('month', m));
-    y.addEventListener('click', ()=>startSubscribe('year', y));
+    document.getElementById('btnMonth').addEventListener('click', ()=>startSubscribe('month', event.currentTarget));
+    document.getElementById('btnYear').addEventListener('click',  ()=>startSubscribe('year',  event.currentTarget));
   </script>
 </body>
 </html>
