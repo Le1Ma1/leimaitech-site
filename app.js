@@ -1,4 +1,3 @@
-// app.js
 require('dotenv').config();
 
 const express = require('express');
@@ -45,32 +44,12 @@ app.use(cors({
     'http://127.0.0.1:3000'
   ]
 }));
+
+// 只啟用 JSON（供 /api/* 使用）；urlencoded 不全域掛，避免 webhook/表單衝撞
 app.use(bodyParser.json({ limit: '1mb' }));
-app.use(bodyParser.urlencoded({ extended: false, limit: '1mb' }));
 
 // 靜態檔 + .html fallback
 app.use(express.static(path.join(__dirname), { extensions: ['html'] }));
-
-// 顯式對應頁
-const send = p => (req, res) => res.sendFile(path.join(__dirname, p));
-
-app.get(['/subscribe', '/subscribe/'], send('subscribe.html'));
-
-// 結果頁：GET 顯示，POST（藍新回跳）轉 303 帶上 ?order_no
-app.get(['/payment-result', '/payment-result/', '/payment-result.html'], send('payment-result.html'));
-app.post(['/payment-result', '/payment-result.html'], (req, res) => {
-  const orderNo =
-    req.body?.MerOrderNo ||
-    req.body?.MerchantOrderNo ||
-    req.body?.Result?.MerOrderNo ||
-    req.body?.order_no ||
-    req.query?.order_no || '';
-  console.log('[PAYMENT RESULT POST]', { bodyKeys: Object.keys(req.body || {}), query: req.query, orderNo });
-  const q = orderNo ? `?order_no=${encodeURIComponent(orderNo)}` : '';
-  res.redirect(303, `/payment-result.html${q}`);
-});
-
-app.get(['/crypto-linebot', '/crypto-linebot/'], send('crypto-linebot/index.html'));
 
 // ===== 小工具 =====
 function addDays(d, days){ const x=new Date(d.getTime()); x.setDate(x.getDate()+days); return x; }
@@ -87,6 +66,51 @@ function aesDecryptHexToText(hex, key, iv){
 const isLineUserId = s => typeof s === 'string' && /^U[a-f0-9]{32}$/i.test(s);
 const sha256U = s => crypto.createHash('sha256').update(s).digest('hex').toUpperCase();
 
+// ===== BOT 介接（供 webhook / cron 用）=====
+const GRACE_DAYS = Number(process.env.GRACE_DAYS || 3);
+function hmac(body){
+  return crypto.createHmac('sha256', process.env.BOT_SECRET || '')
+               .update(body).digest('hex');
+}
+async function callBot(url, payload, idemKey){
+  if (!url) return false;
+  const body = JSON.stringify({ ts: Math.floor(Date.now()/1000), ...payload });
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Signature': hmac(body),
+      'X-Idempotency-Key': idemKey || payload.order_no || payload.user_id
+    },
+    body,
+    signal: AbortSignal.timeout(Number(process.env.BOT_TIMEOUT_MS || 4000))
+  });
+  return res.ok;
+}
+
+// ===== 顯式對應頁 =====
+const send = p => (req, res) => res.sendFile(path.join(__dirname, p));
+app.get(['/subscribe', '/subscribe/'], send('subscribe.html'));
+app.get(['/payment-result', '/payment-result/', '/payment-result.html'], send('payment-result.html'));
+app.get(['/crypto-linebot', '/crypto-linebot/'], send('crypto-linebot/index.html'));
+
+// 結果頁：POST（藍新回跳）→ 303 帶上 ?order_no
+app.post(
+  ['/payment-result', '/payment-result.html'],
+  express.urlencoded({ extended: false, limit: '1mb' }), // 路由級 parser
+  (req, res) => {
+    const orderNo =
+      req.body?.MerOrderNo ||
+      req.body?.MerchantOrderNo ||
+      req.body?.Result?.MerOrderNo ||
+      req.body?.order_no ||
+      req.query?.order_no || '';
+    console.log('[PAYMENT RESULT POST]', { bodyKeys: Object.keys(req.body || {}), query: req.query, orderNo });
+    const q = orderNo ? `?order_no=${encodeURIComponent(orderNo)}` : '';
+    res.redirect(303, `/payment-result.html${q}`);
+  }
+);
+
 // ===== 使用者註冊 =====
 app.post('/api/register', async (req, res) => {
   try{
@@ -98,7 +122,9 @@ app.post('/api/register', async (req, res) => {
     if (selErr) return res.status(500).json({ error: 'db_select_user' });
 
     if (!existed) {
-      const { error: insErr } = await supabase.from('users').insert([{ id:userId, display_name:displayName||null, email:email||null, phone:phone||null }]);
+      const { error: insErr } = await supabase.from('users').insert([{
+        id:userId, display_name:displayName||null, email:email||null, phone:phone||null
+      }]);
       if (insErr) return res.status(500).json({ error: 'db_insert_user' });
       console.log(`[REGISTER] 新增用戶: ${userId}`);
     } else {
@@ -130,8 +156,8 @@ app.post('/api/subscribe', async (req, res) => {
 
     const PeriodType = (period === 'year') ? 'Y' : 'M';
     const PeriodPoint = PeriodType === 'M'
-      ? String(firstChargeDate.getDate()).padStart(2,'0')                       // 月：日
-      : `${String(firstChargeDate.getMonth()+1).padStart(2,'0')}${String(firstChargeDate.getDate()).padStart(2,'0')}`; // 年：MMDD
+      ? String(firstChargeDate.getDate()).padStart(2,'0')
+      : `${String(firstChargeDate.getMonth()+1).padStart(2,'0')}${String(firstChargeDate.getDate()).padStart(2,'0')}`;
 
     const order_no = `LMAI${Date.now()}${Math.floor(Math.random()*1000)}`;
     const { error: orderErr } = await supabase.from('orders').insert([{
@@ -176,8 +202,8 @@ app.get('/pay', async (req, res) => {
       PeriodTimes: 99,
       PayerEmail: order.email || 'test@example.com',
       EmailModify: 1,
-      PaymentInfo: 'N', // 關閉付款人資訊
-      OrderInfo: 'N',   // 隱藏收件人/地址
+      PaymentInfo: 'N',
+      OrderInfo: 'N',
       NotifyURL: process.env.PERIOD_NOTIFY_URL,
       ReturnURL: `${process.env.RETURN_URL_BASE || 'https://leimaitech.com'}/payment-result.html?order_no=${order_no}`
     };
@@ -209,12 +235,11 @@ app.get('/api/order-status', async (req, res) => {
 // ===== 定期定額 Webhook（接受任意 Content-Type）=====
 app.post(
   '/api/period-webhook',
-  express.text({ type: '*/*', limit: '1mb' }), // 直接吃原始文字
+  express.text({ type: '*/*', limit: '1mb' }), // 只給這個路由吃 raw 文字
   async (req, res) => {
     try {
       const ct = req.headers['content-type'] || '';
       const rawText = typeof req.body === 'string' ? req.body : '';
-      // 依序：raw → 已解析物件 → query
       let payload = {};
       if (rawText) payload = qs.parse(rawText);
       else if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) payload = req.body;
@@ -225,7 +250,6 @@ app.post(
       const enc = payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '';
       if (!enc) { console.warn('[WEBHOOK] 缺 enc'); return res.status(200).send('IGNORED'); }
 
-      // 事件指紋 + 建立事件
       const eventHash = crypto.createHash('sha256').update(enc).digest('hex');
       await supabase.from('webhook_events').upsert([{
         event_source: 'newebpay_period',
@@ -234,7 +258,6 @@ app.post(
         processed: false
       }], { onConflict: 'event_hash' });
 
-      // 驗章（若有帶）
       const key = process.env.HASH_KEY, iv = process.env.HASH_IV;
       const providedSha = payload.TradeSha || payload.TradeSHA || '';
       if (providedSha) {
@@ -295,7 +318,6 @@ app.post(
           if (existing?.id) await supabase.from('subscriptions').update(subPayload).eq('id', existing.id);
           else await supabase.from('subscriptions').insert([subPayload]);
 
-          // 加白名單（冪等，用 eventHash 當鍵）
           await callBot(process.env.BOT_UPSERT_URL, {
             provider: 'line',
             user_id: order.user_id,
@@ -326,7 +348,7 @@ app.post(
       return res.status(200).send('OK');
     } catch (e) {
       console.error('[WEBHOOK] error', e);
-      return res.status(200).send('IGNORED'); // 仍回 200 避免重送風暴
+      return res.status(200).send('IGNORED'); // 避免重送風暴
     }
   }
 );
