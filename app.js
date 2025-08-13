@@ -206,149 +206,130 @@ app.get('/api/order-status', async (req, res) => {
   res.json({ status: order.status, order });
 });
 
-// ===== 定期定額 Webhook =====
-app.post('/api/period-webhook', bodyParser.urlencoded({ extended: false, limit: '1mb' }), async (req, res) => {
-  try{
-    const payload = typeof req.body === 'string' ? qs.parse(req.body) : (req.body || {});
-    console.log('[WEBHOOK] raw:', payload);
+// ===== 定期定額 Webhook（接受任意 Content-Type）=====
+app.post(
+  '/api/period-webhook',
+  express.text({ type: '*/*', limit: '1mb' }), // 直接吃原始文字
+  async (req, res) => {
+    try {
+      const ct = req.headers['content-type'] || '';
+      const rawText = typeof req.body === 'string' ? req.body : '';
+      // 依序：raw → 已解析物件 → query
+      let payload = {};
+      if (rawText) payload = qs.parse(rawText);
+      else if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) payload = req.body;
+      else if (req.query && Object.keys(req.query).length) payload = req.query;
 
-    const enc = payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '';
-    if (!enc) { console.warn('[WEBHOOK] 缺 enc'); return res.status(400).send('Missing payload'); }
+      console.log('[WEBHOOK] ct=', ct, 'rawLen=', rawText.length, 'keys=', Object.keys(payload));
 
-    const eventHash = crypto.createHash('sha256').update(enc).digest('hex');
+      const enc = payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '';
+      if (!enc) { console.warn('[WEBHOOK] 缺 enc'); return res.status(200).send('IGNORED'); }
 
-    await supabase.from('webhook_events').upsert([{
-      event_source: 'newebpay_period',
-      event_hash: eventHash,
-      signature: payload.TradeSha || payload.TradeSHA || null,
-      processed: false
-    }], { onConflict: 'event_hash' });
+      // 事件指紋 + 建立事件
+      const eventHash = crypto.createHash('sha256').update(enc).digest('hex');
+      await supabase.from('webhook_events').upsert([{
+        event_source: 'newebpay_period',
+        event_hash: eventHash,
+        signature: payload.TradeSha || payload.TradeSHA || null,
+        processed: false
+      }], { onConflict: 'event_hash' });
 
-    const key = process.env.HASH_KEY, iv = process.env.HASH_IV;
-    const providedSha = payload.TradeSha || payload.TradeSHA || '';
-    if (providedSha) {
-      const candidates = [
-        `HashKey=${key}&${enc}&HashIV=${iv}`,
-        `HashKey=${key}&PostData_=${enc}&HashIV=${iv}`,
-        `HashKey=${key}&TradeInfo=${enc}&HashIV=${iv}`,
-        `HashKey=${key}&Period=${enc}&HashIV=${iv}`
-      ];
-      const ok = candidates.some(str => sha256U(str) === providedSha);
-      if (!ok) { console.warn('[WEBHOOK] SHA mismatch', { providedSha }); return res.status(200).send('IGNORED'); }
-    }
-
-    const decodedText = aesDecryptHexToText(enc, key, iv);
-    let result; try { result = JSON.parse(decodedText); } catch { result = qs.parse(decodedText); }
-    console.log('[WEBHOOK] decoded:', result);
-
-    await supabase.from('webhook_events').update({ payload: result }).eq('event_hash', eventHash);
-
-    const merOrderNo =
-      result?.MerOrderNo ||
-      result?.MerchantOrderNo ||
-      result?.Result?.MerOrderNo ||
-      result?.Result?.MerchantOrderNo;
-    if (!merOrderNo) { console.warn('[WEBHOOK] 無 MerOrderNo'); return res.status(200).send('IGNORED'); }
-
-    const respondCode = result?.Result?.RespondCode || result?.RespondCode || result?.ReturnCode || result?.RtnCode;
-    const status = (result?.Status || '').toString().toUpperCase();
-    const isSuccess = status === 'SUCCESS' || respondCode === '00';
-    const periodNo = result?.PeriodNo || result?.Result?.PeriodNo || result?.Result?.PeriodInfo || null;
-
-    if (isSuccess) {
-      await supabase.from('orders').update({ status: 'paid' }).eq('order_no', merOrderNo);
-      const { data: order } = await supabase.from('orders').select('*').eq('order_no', merOrderNo).maybeSingle();
-
-      if (order) {
-        const subPayload = {
-          user_id: order.user_id,
-          plan: 'pro',
-          period: order.period,
-          status: 'trialing',
-          trial_start: order.trial_start,
-          trial_end: order.trial_end,
-          current_period_start: order.trial_start,
-          current_period_end: order.trial_end,
-          period_type: order.period_type,
-          period_point: order.period_point,
-          period_times: 99,
-          gateway: 'newebpay',
-          gateway_period_no: periodNo
-        };
-
-        const { data: existing } = await supabase
-          .from('subscriptions')
-          .select('id,status')
-          .eq('user_id', order.user_id)
-          .eq('plan','pro')
-          .in('status',['trialing','active','past_due'])
-          .maybeSingle();
-
-        if (existing?.id) await supabase.from('subscriptions').update(subPayload).eq('id', existing.id);
-        else await supabase.from('subscriptions').insert([subPayload]);
+      // 驗章（若有帶）
+      const key = process.env.HASH_KEY, iv = process.env.HASH_IV;
+      const providedSha = payload.TradeSha || payload.TradeSHA || '';
+      if (providedSha) {
+        const ok = [
+          `HashKey=${key}&${enc}&HashIV=${iv}`,
+          `HashKey=${key}&PostData_=${enc}&HashIV=${iv}`,
+          `HashKey=${key}&TradeInfo=${enc}&HashIV=${iv}`,
+          `HashKey=${key}&Period=${enc}&HashIV=${iv}`
+        ].some(s => sha256U(s) === providedSha);
+        if (!ok) { console.warn('[WEBHOOK] SHA mismatch'); return res.status(200).send('IGNORED'); }
       }
 
-      await supabase.from('transactions').insert([{
-        order_no: merOrderNo,
-        type: 'initial',
-        status: 'success',
-        gateway: 'newebpay',
-        gateway_trade_no: periodNo,
-        paid_at: new Date().toISOString(),
-        raw_payload: result
-      }]);
+      const decodedText = aesDecryptHexToText(enc, key, iv);
+      let result; try { result = JSON.parse(decodedText); } catch { result = qs.parse(decodedText); }
+      console.log('[WEBHOOK] decoded:', result);
 
-      // ← 在這裡接上「加白名單」呼叫（有訂單才做，冪等）
-      if (order) {
-        await callBot(
-          process.env.BOT_UPSERT_URL,
-          {
+      await supabase.from('webhook_events').update({ payload: result }).eq('event_hash', eventHash);
+
+      const merOrderNo =
+        result?.MerOrderNo || result?.MerchantOrderNo ||
+        result?.Result?.MerOrderNo || result?.Result?.MerchantOrderNo;
+      if (!merOrderNo) { console.warn('[WEBHOOK] 無 MerOrderNo'); return res.status(200).send('IGNORED'); }
+
+      const respondCode = result?.Result?.RespondCode || result?.RespondCode || result?.ReturnCode || result?.RtnCode;
+      const status = String(result?.Status || '').toUpperCase();
+      const isSuccess = status === 'SUCCESS' || respondCode === '00';
+      const periodNo = result?.PeriodNo || result?.Result?.PeriodNo || result?.Result?.PeriodInfo || null;
+
+      if (isSuccess) {
+        await supabase.from('orders').update({ status: 'paid' }).eq('order_no', merOrderNo);
+        const { data: order } = await supabase.from('orders').select('*').eq('order_no', merOrderNo).maybeSingle();
+
+        if (order) {
+          const subPayload = {
+            user_id: order.user_id,
+            plan: 'pro',
+            period: order.period,
+            status: 'trialing',
+            trial_start: order.trial_start,
+            trial_end: order.trial_end,
+            current_period_start: order.trial_start,
+            current_period_end: order.trial_end,
+            period_type: order.period_type,
+            period_point: order.period_point,
+            period_times: 99,
+            gateway: 'newebpay',
+            gateway_period_no: periodNo
+          };
+
+          const { data: existing } = await supabase
+            .from('subscriptions')
+            .select('id,status')
+            .eq('user_id', order.user_id)
+            .eq('plan','pro')
+            .in('status',['trialing','active','past_due'])
+            .maybeSingle();
+
+          if (existing?.id) await supabase.from('subscriptions').update(subPayload).eq('id', existing.id);
+          else await supabase.from('subscriptions').insert([subPayload]);
+
+          // 加白名單（冪等，用 eventHash 當鍵）
+          await callBot(process.env.BOT_UPSERT_URL, {
             provider: 'line',
             user_id: order.user_id,
             plan: 'pro',
             order_no: merOrderNo,
             period_no: periodNo || null,
-            access_until: order.trial_end   // 首次授權用試用結束；之後續扣會往後推
-          },
-          eventHash || merOrderNo          // 冪等鍵
-        );
+            access_until: order.trial_end
+          }, eventHash);
+        }
+
+        await supabase.from('transactions').insert([{
+          order_no: merOrderNo,
+          type: 'initial',
+          status: 'success',
+          gateway: 'newebpay',
+          gateway_trade_no: periodNo,
+          paid_at: new Date().toISOString(),
+          raw_payload: result
+        }]);
+        console.log(`[WEBHOOK] OK ${merOrderNo} → paid / trialing`);
+      } else {
+        await supabase.from('orders').update({ status: 'failed' }).eq('order_no', merOrderNo);
+        await supabase.from('transactions').insert([{ order_no: merOrderNo, type:'initial', status:'failed', raw_payload: result }]);
+        console.log(`[WEBHOOK] FAIL ${merOrderNo}`);
       }
 
-console.log(`[WEBHOOK] OK ${merOrderNo} → paid / trialing`);
-
-      console.log(`[WEBHOOK] OK ${merOrderNo} → paid / trialing`);
-    } else {
-      await supabase.from('orders').update({ status: 'failed' }).eq('order_no', merOrderNo);
-      await supabase.from('transactions').insert([{ order_no: merOrderNo, type:'initial', status:'failed', raw_payload: result }]);
-      console.log(`[WEBHOOK] FAIL ${merOrderNo}`);
+      await supabase.from('webhook_events').update({ processed: true }).eq('event_hash', eventHash);
+      return res.status(200).send('OK');
+    } catch (e) {
+      console.error('[WEBHOOK] error', e);
+      return res.status(200).send('IGNORED'); // 仍回 200 避免重送風暴
     }
-
-    await supabase.from('webhook_events').update({ processed: true }).eq('event_hash', eventHash);
-    res.status(200).send('OK');
-  }catch(e){ console.error('[WEBHOOK] error', e); res.status(500).send('Server Error'); }
-});
-
-// ===== BOT 介接 =====
-const GRACE_DAYS = Number(process.env.GRACE_DAYS || 3); // 寬限天數，預設 3
-function hmac(body){
-  return crypto.createHmac('sha256', process.env.BOT_SECRET || '')
-               .update(body).digest('hex');
-}
-async function callBot(url, payload, idemKey){
-  if (!url) return false;
-  const body = JSON.stringify({ ts: Math.floor(Date.now()/1000), ...payload });
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Signature': hmac(body),
-      'X-Idempotency-Key': idemKey || payload.order_no || payload.user_id
-    },
-    body,
-    signal: AbortSignal.timeout(Number(process.env.BOT_TIMEOUT_MS || 4000))
-  });
-  return res.ok;
-}
+  }
+);
 
 // ===== 每日對帳：過期或取消就移除白名單 =====
 app.post('/cron/reconcile', async (req, res) => {
