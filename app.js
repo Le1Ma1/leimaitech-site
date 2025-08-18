@@ -16,6 +16,7 @@ const PERIOD_ENDPOINT = `${NEWEBPAY_BASE}/MPG/period`;
 
 const HASH_KEY = (process.env.HASH_KEY || '').trim();
 const HASH_IV  = (process.env.HASH_IV  || '').trim();
+const ADMIN_FORCE_TOKEN = process.env.ADMIN_FORCE_TOKEN || '';
 
 // ===== 日誌與 Request ID =====
 app.use((req, res, next) => {
@@ -48,7 +49,7 @@ app.use(cors({
   ]
 }));
 
-// 只啟用 JSON（供 /api/* 使用）；urlencoded 不全域掛，避免 webhook/表單衝撞
+// 只啟用 JSON（供 /api/* 使用）
 app.use(bodyParser.json({ limit: '1mb' }));
 
 // 靜態檔 + .html fallback（本專案根目錄）
@@ -61,31 +62,29 @@ function aesEncrypt(obj, key, iv){
   const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(key,'utf8'), Buffer.from(iv,'utf8'));
   let enc = cipher.update(qs.stringify(obj), 'utf8', 'hex'); enc += cipher.final('hex'); return enc;
 }
+const isHex = s => /^[0-9a-f]+$/i.test(s) && s.length % 2 === 0;
 function aesDecryptSmart(encStr, key, iv){
   const k = Buffer.from(key, 'utf8');
   const i = Buffer.from(iv,  'utf8');
-
-  // 先嘗試 hex
-  try {
-    const decipher = crypto.createDecipheriv('aes-256-cbc', k, i);
-    decipher.setAutoPadding(true);
-    let out = decipher.update(Buffer.from(encStr, 'hex'));
-    out = Buffer.concat([out, decipher.final()]);
-    return out.toString('utf8');
-  } catch {}
-
-  // 再嘗試 base64
-  const decipher = crypto.createDecipheriv('aes-256-cbc', k, i);
-  decipher.setAutoPadding(true);
-  let out = decipher.update(Buffer.from(encStr, 'base64'));
-  out = Buffer.concat([out, decipher.final()]);
-  return out.toString('utf8');
+  const tries = isHex(encStr) ? ['hex','base64'] : ['base64','hex'];
+  let lastErr;
+  for (const enc of tries){
+    try{
+      const decipher = crypto.createDecipheriv('aes-256-cbc', k, i);
+      decipher.setAutoPadding(true);
+      let out = decipher.update(Buffer.from(encStr, enc));
+      out = Buffer.concat([out, decipher.final()]);
+      return { text: out.toString('utf8'), encType: enc };
+    }catch(e){ lastErr = e; }
+  }
+  const err = new Error('bad decrypt');
+  err.cause = lastErr;
+  throw err;
 }
-const isHex = s => /^[0-9a-f]+$/i.test(s) && s.length % 2 === 0;
 const isLineUserId = s => typeof s === 'string' && /^U[a-f0-9]{32}$/i.test(s);
 const sha256U = s => crypto.createHash('sha256').update(s).digest('hex').toUpperCase();
 
-// ===== BOT 介接（供 webhook / cron 用）=====
+// ===== BOT 介接 =====
 const GRACE_DAYS = Number(process.env.GRACE_DAYS || 3);
 function hmac(body){
   return crypto.createHmac('sha256', process.env.BOT_SECRET || '')
@@ -116,7 +115,7 @@ app.get(['/crypto-linebot', '/crypto-linebot/'], send('crypto-linebot/index.html
 // 結果頁：POST（藍新回跳）→ 303 帶上 ?order_no
 app.post(
   ['/payment-result', '/payment-result.html'],
-  express.urlencoded({ extended: false, limit: '1mb' }), // 路由級 parser
+  express.urlencoded({ extended: false, limit: '1mb' }),
   (req, res) => {
     const orderNo =
       req.body?.MerOrderNo ||
@@ -253,7 +252,7 @@ app.get('/api/order-status', async (req, res) => {
 // ===== 定期定額 Webhook（接受任意 Content-Type）=====
 app.post(
   '/api/period-webhook',
-  express.text({ type: '*/*', limit: '1mb' }), // 只給這個路由吃 raw 文字
+  express.text({ type: '*/*', limit: '1mb' }),
   async (req, res) => {
     let eventHash = null;
     try {
@@ -266,7 +265,7 @@ app.post(
 
       console.log('[WEBHOOK] ct=', ct, 'rawLen=', rawText.length, 'keys=', Object.keys(payload));
 
-      let enc = payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '';
+      let enc = (payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '').trim();
       if (!enc) { console.warn('[WEBHOOK] 缺 enc'); return res.status(200).send('IGNORED'); }
 
       // 先記錄事件（processed=false）
@@ -278,7 +277,7 @@ app.post(
         processed: false
       }], { onConflict: 'event_hash' });
 
-      // x-www-form-urlencoded 把 '+' 解成空白，若不是純 hex，還原空白為 '+'
+      // 若不是純 hex，還原空白為 '+'
       if (!isHex(enc)) enc = enc.replace(/ /g, '+');
 
       const providedSha = payload.TradeSha || payload.TradeSHA || '';
@@ -289,14 +288,24 @@ app.post(
           `HashKey=${HASH_KEY}&Period=${enc}&HashIV=${HASH_IV}`,
         ];
         const ok = candidates.some(s => sha256U(s) === providedSha);
-        if (!ok) console.warn('[WEBHOOK] SHA mismatch (continue due to sandbox)');
+        if (!ok) console.warn('[WEBHOOK] SHA mismatch (sandbox may omit/alter)');
       }
 
-      // 解密（hex → base64 容錯）
-      const decodedText = aesDecryptSmart(enc, HASH_KEY, HASH_IV);
+      // 解密
+      let decodedText, encType;
+      try {
+        const r = aesDecryptSmart(enc, HASH_KEY, HASH_IV);
+        decodedText = r.text; encType = r.encType;
+      } catch (e) {
+        console.error('[WEBHOOK] decrypt failed');
+        await supabase.from('webhook_events').update({
+          payload: { bad_decrypt:true, enc_len: enc.length, is_hex: isHex(enc), sample: enc.slice(0, 48) }
+        }).eq('event_hash', eventHash);
+        return res.status(200).send('IGNORED');
+      }
 
       let result; try { result = JSON.parse(decodedText); } catch { result = qs.parse(decodedText); }
-      console.log('[WEBHOOK] decoded:', result);
+      console.log('[WEBHOOK] decoded encType=', encType, 'result keys=', Object.keys(result));
 
       // 更新事件 payload
       await supabase.from('webhook_events').update({ payload: result }).eq('event_hash', eventHash);
@@ -360,12 +369,11 @@ app.post(
 
         await supabase.from('transactions').insert([{
           order_no: merOrderNo,
-          user_id: order?.user_id || null,
+          user_id: (order && order.user_id) || null,
           type: 'initial',
-          status: 'succeeded', // 符合資料表約束
-          amount: order?.amount || null,
-          currency: order?.currency || 'TWD',
-          gateway: 'newebpay',
+          status: 'succeeded',
+          amount: (order && order.amount) || null,
+          currency: (order && order.currency) || 'TWD',
           gateway_trade_no: periodNo,
           paid_at: new Date().toISOString(),
           raw_payload: result
@@ -383,15 +391,14 @@ app.post(
       return res.status(200).send('OK');
     } catch (e) {
       console.error('[WEBHOOK] error', e);
-      // 失敗時把 enc 片段寫入 payload 便於追查
       if (eventHash) {
         try {
           await supabase.from('webhook_events').update({
-            payload: { parse_error: true, note: 'bad decrypt or parse', ts: new Date().toISOString() }
+            payload: { parse_error: true, note: 'exception', ts: new Date().toISOString() }
           }).eq('event_hash', eventHash);
         } catch {}
       }
-      return res.status(200).send('IGNORED'); // 避免重送風暴
+      return res.status(200).send('IGNORED');
     }
   }
 );
@@ -422,6 +429,63 @@ app.post('/cron/reconcile', async (req, res) => {
     }
   }
   res.json({ ok: true, checked: (subs || []).length, removed, grace_days: GRACE_DAYS });
+});
+
+// ===== 測試用：強制把訂單設為已付款（需 ADMIN_FORCE_TOKEN）=====
+app.post('/admin/force-paid', express.json(), async (req, res) => {
+  try{
+    const { token, order_no } = req.body || {};
+    if (!ADMIN_FORCE_TOKEN || token !== ADMIN_FORCE_TOKEN) return res.sendStatus(403);
+    if (!order_no) return res.status(400).json({ error:'missing order_no' });
+
+    const { data: order } = await supabase.from('orders').select('*').eq('order_no', order_no).maybeSingle();
+    if (!order) return res.status(404).json({ error:'order_not_found' });
+
+    await supabase.from('orders').update({
+      status:'paid', paid_at:new Date().toISOString(), newebpay_period_no: order.newebpay_period_no || 'TESTFORCE'
+    }).eq('order_no', order_no);
+
+    const subPayload = {
+      user_id: order.user_id,
+      plan: order.plan || 'pro',
+      period: order.period,
+      status: 'trialing',
+      trial_start: order.trial_start,
+      trial_end: order.trial_end,
+      current_period_start: order.trial_start,
+      current_period_end: order.trial_end,
+      period_type: order.period_type,
+      period_point: order.period_point,
+      period_times: order.period_times || 99,
+      gateway: 'newebpay',
+      gateway_period_no: order.newebpay_period_no || 'TESTFORCE'
+    };
+
+    const { data: existing } = await supabase
+      .from('subscriptions')
+      .select('id,status')
+      .eq('user_id', order.user_id)
+      .eq('plan', subPayload.plan)
+      .in('status',['trialing','active','past_due'])
+      .maybeSingle();
+
+    if (existing?.id) await supabase.from('subscriptions').update(subPayload).eq('id', existing.id);
+    else await supabase.from('subscriptions').insert([subPayload]);
+
+    await supabase.from('transactions').insert([{
+      order_no: order.order_no,
+      user_id: order.user_id,
+      type: 'initial',
+      status: 'succeeded',
+      amount: order.amount,
+      currency: order.currency || 'TWD',
+      gateway_trade_no: order.newebpay_period_no || 'TESTFORCE',
+      paid_at: new Date().toISOString(),
+      raw_payload: { forced: true }
+    }]);
+
+    res.json({ ok:true, forced:true });
+  }catch(e){ console.error('[ADMIN FORCE PAID] error', e); res.status(500).json({ error:'server' }); }
 });
 
 // 健康檢查
