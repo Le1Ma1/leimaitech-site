@@ -1,29 +1,39 @@
 ```
 LEIMAITECH-SITE/
-├── .venv/ # 虛擬環境資料夾（如有用 Python）
-├── assets/ # 主站公用靜態素材（Logo, 背景圖等）
-├── crypto-linebot/ # 加密貨幣機器人專用分頁
-│ ├── assets/ # 加密貨幣頁素材（Logo、背景、icon 等）
-│ ├── js/
-│ │ └── crypto.js # Crypto 頁面專用的 JS（Chart.js 圖表、互動）
-│ ├── index.html # 加密貨幣機器人主頁（功能、訂閱方案、導流）
-│ ├── privacy.html # 隱私權條款
-│ ├── returns.html # 退換貨政策
-│ ├── terms.html # 會員服務條款
-├── css/
-│ └── style.css # 全站主樣式（含訂閱頁、首頁、品牌頁）
-├── js/
-│ └── main.js # 主站通用 JS（首頁特效、粒子動畫等）
-├── node_modules/ # Node.js 依賴模組
-├── .env # 環境變數設定（私密，勿外流）
-├── .gitignore # Git 版本控管忽略規則
-├── app.js # Node/Express 主要後端 API 服務
-├── db.js # 資料庫（Supabase/Postgres）連線管理
-├── CNAME # GitHub Pages 自訂網域設定檔
-├── index.html # 主站首頁（品牌形象、入口）
-├── package-lock.json # npm 套件鎖定檔
-├── package.json # npm 專案描述與依賴管理
-├── payment-result.html # 金流付款結果查詢頁
-├── README.md # 專案說明文件
-└── subscribe.html # 訂閱方案升級頁（LINE LIFF 授權/付款）
+├─ .venv/                         # 本機虛擬環境資料夾（若有使用，版控通常忽略）
+├─ assets/                        # 共用靜態資源（圖片/圖示等）
+│
+├─ crypto-linebot/                # LINE Bot 訂閱漏斗頁（對台灣市場的行銷頁面）
+│  ├─ assets/                     # 此子站專用資源
+│  ├─ js/
+│  │  └─ crypto.js               # 漏斗頁互動腳本（定價、滾動、CTA 綁定等）
+│  ├─ index.html                  # 漏斗首頁（導向方案、CTA 按鈕）
+│  ├─ privacy.html                # 隱私權頁（子站版）
+│  ├─ returns.html                # 退款/退貨政策（子站版）
+│  └─ terms.html                  # 使用條款（子站版）
+│
+├─ css/
+│  └─ style.css                   # 主站樣式
+│
+├─ js/
+│  └─ main.js                     # 主站共用腳本（導航/表單/追蹤）
+│
+├─ node_modules/                  # 依賴套件
+├─ .env                           # 環境變數（本機/部署用，不應入版控）
+├─ .gitignore                     # Git 忽略清單
+│
+├─ app.js                         # 伺服器進入點：Express 靜態檔服務、API、NewebPay Webhook
+├─ db.js                          # 資料存取層（如連接 Supabase/Postgres；訂閱/交易記錄）
+│
+├─ index.html                     # 主站首頁（品牌、服務導流）
+├─ subscribe.html                 # 訂閱方案頁（搭配藍新金流導購）
+├─ payment-result.html            # 付款結果顯示頁（交易成功/失敗/等待）
+├─ privacy.html                   # 主站隱私權頁
+├─ terms.html                     # 主站使用條款
+├─ returns.html                   # 主站退款/退貨政策（若存在）
+│
+├─ CNAME                          # 自訂網域設定（GitHub Pages/靜態託管使用時）
+├─ package.json                   # 專案設定與腳本
+├─ package-lock.json              # 依賴鎖定檔
+└─ README.md                      # 本說明文件
 ```
