@@ -29,7 +29,7 @@
   <div class="container">
     <h1>LeiMai Pro 訂閱</h1>
     <p class="sub">用 LINE 登入後即可訂閱。含 <strong>10 天免費試用</strong>，期間可隨時取消；完成後會自動開通推播。</p>
-    
+
     <div class="grid">
       <div class="card">
         <h3>月訂閱</h3>
@@ -57,9 +57,9 @@
   </div>
 
   <script>
-    // === 基本設定（同網域呼叫 API）===
+    // === 基本設定 ===
     const LIFF_ID  = '2007745575-JPOMYKYn';
-    const API_BASE = 'https://api.leimaitech.com'; // 留空 = 用當前網域（建議放在 api 子網域上）
+    const API_BASE = 'https://api.leimaitech.com';
 
     // === 若不在 LINE / 取不到 uid，提供一鍵在 LINE 開啟 ===
     const blocker = document.getElementById('blocker');
@@ -67,7 +67,7 @@
 
     function setOpenInLineFallback(){
       const isMobile = /iphone|ipad|ipod|android/i.test(navigator.userAgent);
-      const here = location.href; // 直接把當前網址丟給 LIFF，回來時會保留查詢參數
+      const here = location.href;
       openBtn.href = isMobile ? `line://app/${LIFF_ID}` : `https://liff.line.me/${LIFF_ID}?redirectUri=${encodeURIComponent(here)}`;
     }
 
@@ -88,16 +88,32 @@
       setOpenInLineFallback(); blocker.style.display = 'grid';
     })();
 
-    // === API 小工具 ===
+    // === API 小工具（回傳真錯誤） ===
     function postJSON(url, data){
       return fetch((API_BASE || '') + url, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify(data),
-        cache:'no-store'
-      }).then(r => r.ok ? r.json()
-                        : r.json().catch(()=>({})).then(j => Promise.reject(j)));
+        cache:'no-store',
+        credentials:'omit'
+      }).then(async r => {
+        const text = await r.text().catch(()=> '');
+        let json = null; try { json = text ? JSON.parse(text) : null; } catch {}
+        if (r.ok) return json ?? {};
+        const msg = (json && (json.error || json.message)) || text || `${r.status} ${r.statusText}`;
+        throw new Error(`HTTP ${r.status} ${msg}`);
+      });
     }
+
+    // === 小型除錯浮窗（LINE 內看不到 Console 用） ===
+    (function dbg(){
+      const d=document.createElement('div');
+      d.style.cssText='position:fixed;left:8px;bottom:8px;background:#000a;color:#fff;padding:6px 8px;border:1px solid #fff3;font:12px monospace;z-index:99999;border-radius:6px';
+      const p=new URLSearchParams(location.search);
+      d.textContent=`API_BASE=${API_BASE} | uid=${p.get('uid')||'-'}`;
+      document.body.appendChild(d);
+    })();
+    window.addEventListener('error',e=>alert('JS Error: '+e.message));
 
     // === 建單 → 轉跳藍新 ===
     async function startSubscribe(period, btn){
@@ -108,23 +124,26 @@
         btn.disabled = true; btn.dataset.label = btn.textContent;
         btn.innerHTML = '<span class="spinner"></span> 建立訂單中…';
 
+        // 先確認 API 可達
+        const ping = await fetch((API_BASE||'') + '/api/health', { cache:'no-store' });
+        if (!ping.ok) throw new Error(`health ${ping.status}`);
+
         await postJSON('/api/register',  { userId: uid });
         const r = await postJSON('/api/subscribe', { userId: uid, plan:'pro', period });
-        if (!r?.order_no) throw new Error('建單失敗，請稍後再試');
+        if (!r?.order_no) throw new Error('建單失敗');
 
         btn.innerHTML = '✅ 前往付款頁…';
         location.href = (API_BASE || '') + `/pay?order_no=${encodeURIComponent(r.order_no)}`;
       }catch(e){
         console.error(e);
-        alert(e?.error || '目前忙碌，請稍後再試');
+        const msg = e?.message || e?.error || String(e) || '失敗';
+        alert(msg);
         btn.disabled = false; btn.textContent = btn.dataset.label || '再試一次';
       }
     }
 
-    document.getElementById('btnMonth')
-      .addEventListener('click', (e)=>startSubscribe('month', e.currentTarget));
-    document.getElementById('btnYear')
-      .addEventListener('click',  (e)=>startSubscribe('year',  e.currentTarget));
+    document.getElementById('btnMonth').addEventListener('click', (e)=>startSubscribe('month', e.currentTarget));
+    document.getElementById('btnYear').addEventListener('click',  (e)=>startSubscribe('year',  e.currentTarget));
   </script>
 </body>
 </html>
