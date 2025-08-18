@@ -59,7 +59,7 @@
   <script>
     // === 基本設定（同網域呼叫 API）===
     const LIFF_ID  = '2007745575-JPOMYKYn';
-    const API_BASE = 'https://leimaitech-site.onrender.com'; // 留空 = 用當前網域（建議放在 api 子網域上）
+    const API_BASE = 'https://api.leimaitech.com'; // 留空 = 用當前網域（建議放在 api 子網域上）
 
     // === 若不在 LINE / 取不到 uid，提供一鍵在 LINE 開啟 ===
     const blocker = document.getElementById('blocker');
@@ -121,8 +121,10 @@
       }
     }
 
-    document.getElementById('btnMonth').addEventListener('click', ()=>startSubscribe('month', event.currentTarget));
-    document.getElementById('btnYear').addEventListener('click',  ()=>startSubscribe('year',  event.currentTarget));
+    document.getElementById('btnMonth')
+      .addEventListener('click', (e)=>startSubscribe('month', e.currentTarget));
+    document.getElementById('btnYear')
+      .addEventListener('click',  (e)=>startSubscribe('year',  e.currentTarget));
   </script>
 </body>
 </html>
