@@ -421,50 +421,98 @@ app.post(
   }
 );
 
-// ===== 測試用：強制把訂單設為已付款（需要 TEST_TOKEN）=====
-app.post('/api/_force-pay', express.json(), async (req, res) => {
-  const token = req.query.token || req.headers['x-test-token'];
-  if (token !== (process.env.TEST_TOKEN || '')) return res.sendStatus(403);
-  const order_no = req.body?.order_no || req.query?.order_no;
-  if (!order_no) return res.status(400).json({ error: 'missing order_no' });
+// ===== 強制標記已付款（測試用） =====
+// 允許用 FORCE_TOKEN（或退而求其次用 CRON_TOKEN）保護
+app.post('/api/_force-pay', async (req, res) => {
+  const token = String(req.query.token || '');
+  const guard = process.env.FORCE_TOKEN || process.env.CRON_TOKEN || '';
+  if (!guard || token !== guard) return res.status(403).json({ error: 'forbidden' });
 
-  const { data: order } = await supabase.from('orders').select('*').eq('order_no', order_no).maybeSingle();
-  if (!order) return res.status(404).json({ error: 'order_not_found' });
+  try {
+    const order_no = req.body?.order_no || req.query?.order_no;
+    if (!order_no) return res.status(400).json({ error: 'missing order_no' });
 
-  const periodNo = `TEST-${Date.now()}`;
-  await supabase.from('orders')
-    .update({ status: 'paid', paid_at: new Date().toISOString(), newebpay_period_no: periodNo })
-    .eq('order_no', order_no);
+    // 讀取訂單
+    const { data: order, error: selErr } =
+      await supabase.from('orders').select('*').eq('order_no', order_no).maybeSingle();
+    if (selErr) return res.status(500).json({ error: 'db_select_order' });
+    if (!order) return res.status(404).json({ error: 'order_not_found' });
 
-  const subPayload = {
-    user_id: order.user_id,
-    plan: 'pro',
-    period: order.period,
-    status: 'trialing',
-    trial_start: order.trial_start,
-    trial_end: order.trial_end,
-    current_period_start: order.trial_start,
-    current_period_end: order.trial_end,
-    period_type: order.period_type,
-    period_point: order.period_point,
-    period_times: 99,
-    gateway: 'manual',
-    gateway_period_no: periodNo
-  };
-  const { data: existing } = await supabase
-    .from('subscriptions').select('id,status')
-    .eq('user_id', order.user_id).eq('plan','pro')
-    .in('status',['trialing','active','past_due']).maybeSingle();
-  if (existing?.id) await supabase.from('subscriptions').update(subPayload).eq('id', existing.id);
-  else await supabase.from('subscriptions').insert([subPayload]);
+    // 標記已付款
+    const paidAt = new Date().toISOString();
+    const periodNo = order.newebpay_period_no || `TEST_${Date.now()}`;
 
-  await supabase.from('transactions').insert([{
-    order_no, user_id: order.user_id, type:'initial', status:'succeeded',
-    amount: order.amount, currency: order.currency, gateway:'manual',
-    gateway_trade_no: periodNo, paid_at: new Date().toISOString(), raw_payload:{ forced:true }
-  }]);
+    const { error: updErr } = await supabase
+      .from('orders')
+      .update({ status: 'paid', paid_at: paidAt, newebpay_period_no: periodNo })
+      .eq('order_no', order_no);
+    if (updErr) return res.status(500).json({ error: 'db_update_order' });
 
-  res.json({ ok:true, order_no, period_no: periodNo });
+    // upsert 訂閱（試用到期日前給權限）
+    if (order.user_id) {
+      const subPayload = {
+        user_id: order.user_id,
+        plan: order.plan || 'pro',
+        period: order.period,
+        status: 'trialing',
+        trial_start: order.trial_start,
+        trial_end: order.trial_end,
+        current_period_start: order.trial_start,
+        current_period_end: order.trial_end,
+        period_type: order.period_type,
+        period_point: order.period_point,
+        period_times: order.period_times || 99,
+        gateway: 'test',
+        gateway_period_no: periodNo,
+        updated_at: paidAt,
+        created_at: order.created_at || paidAt
+      };
+
+      const { data: existing } = await supabase
+        .from('subscriptions')
+        .select('id,status')
+        .eq('user_id', order.user_id)
+        .eq('plan', subPayload.plan)
+        .in('status', ['trialing', 'active', 'past_due'])
+        .maybeSingle();
+
+      if (existing?.id) {
+        await supabase.from('subscriptions').update(subPayload).eq('id', existing.id);
+      } else {
+        await supabase.from('subscriptions').insert([subPayload]);
+      }
+
+      // 可選：通知 bot 白名單（若你有設定 BOT_UPSERT_URL）
+      await callBot(process.env.BOT_UPSERT_URL, {
+        provider: 'line',
+        user_id: order.user_id,
+        plan: subPayload.plan,
+        order_no,
+        period_no: periodNo,
+        access_until: order.trial_end
+      }, order_no);
+    }
+
+    // 建交易紀錄
+    await supabase.from('transactions').insert([{
+      order_no,
+      user_id: order.user_id || null,
+      subscription_id: null,
+      type: 'initial',
+      status: 'succeeded',
+      amount: order.amount,
+      currency: order.currency || 'TWD',
+      gateway_trade_no: periodNo,
+      gateway_auth_code: 'TEST',
+      paid_at: paidAt,
+      raw_payload: { forced: true }
+    }]);
+
+    return res.json({ ok: true, order_no, status: 'paid', period_no: periodNo, paid_at: paidAt });
+  } catch (e) {
+    console.error('[_force-pay] error', e);
+    return res.status(500).json({ error: 'server_error' });
+  }
 });
 
 // ===== 每日對帳：過期或取消就移除白名單 =====
@@ -497,5 +545,98 @@ app.post('/cron/reconcile', async (req, res) => {
 
 // 健康檢查
 app.get('/api/health', (req,res)=>res.json({ ok:true, ts:new Date().toISOString() }));
+
+// ===== 測試用：強制把訂單設為已付款 =====
+app.all('/api/_force-pay', express.json(), async (req, res) => {
+  try {
+    const token = (req.query.token || req.headers['x-force-token'] || '').toString();
+    if (!process.env.FORCE_TOKEN || token !== process.env.FORCE_TOKEN) {
+      return res.sendStatus(403);
+    }
+
+    const q = { ...req.query, ...(typeof req.body === 'object' ? req.body : {}) };
+    const orderNo = (q.order_no || q.orderNo || '').toString().trim();
+    const newStatus = (q.status || 'paid').toString().toLowerCase(); // 'paid' | 'failed'
+    const periodNo = q.period_no || q.periodNo || null;
+
+    if (!orderNo) return res.status(400).json({ error: 'missing order_no' });
+    const { data: order } = await supabase.from('orders').select('*').eq('order_no', orderNo).maybeSingle();
+    if (!order) return res.status(404).json({ error: 'order_not_found' });
+
+    const nowIso = new Date().toISOString();
+    await supabase.from('orders')
+      .update({
+        status: newStatus === 'paid' ? 'paid' : 'failed',
+        paid_at: newStatus === 'paid' ? nowIso : null,
+        newebpay_period_no: periodNo || order.newebpay_period_no || null
+      })
+      .eq('order_no', orderNo);
+
+    if (newStatus === 'paid') {
+      // 建/更新 subscription（沿用 webhook 的邏輯）
+      const subPayload = {
+        user_id: order.user_id,
+        plan: order.plan || 'pro',
+        period: order.period,
+        status: 'trialing',
+        trial_start: order.trial_start,
+        trial_end: order.trial_end,
+        current_period_start: order.trial_start,
+        current_period_end: order.trial_end,
+        period_type: order.period_type,
+        period_point: order.period_point,
+        period_times: order.period_times || 99,
+        gateway: 'newebpay',
+        gateway_period_no: periodNo || null,
+        updated_at: nowIso,
+      };
+      const { data: existing } = await supabase
+        .from('subscriptions')
+        .select('id,status')
+        .eq('user_id', order.user_id)
+        .eq('plan', subPayload.plan)
+        .in('status', ['trialing', 'active', 'past_due'])
+        .maybeSingle();
+
+      if (existing?.id) await supabase.from('subscriptions').update(subPayload).eq('id', existing.id);
+      else await supabase.from('subscriptions').insert([subPayload]);
+
+      // 記交易
+      await supabase.from('transactions').insert([{
+        order_no: orderNo,
+        user_id: order.user_id,
+        type: 'initial',
+        status: 'succeeded',
+        amount: order.amount,
+        currency: order.currency,
+        gateway_trade_no: periodNo || 'force_test',
+        paid_at: nowIso,
+        raw_payload: { force: true }
+      }]);
+
+      // 通知 Bot 白名單
+      try {
+        await callBot(process.env.BOT_UPSERT_URL, {
+          provider: 'line',
+          user_id: order.user_id,
+          plan: subPayload.plan,
+          order_no: orderNo,
+          period_no: periodNo || null,
+          access_until: order.trial_end
+        }, `force-${orderNo}`);
+      } catch {}
+    } else {
+      await supabase.from('transactions').insert([{
+        order_no: orderNo, user_id: order.user_id, type: 'initial', status: 'failed',
+        amount: order.amount, currency: order.currency, raw_payload: { force: true }
+      }]);
+    }
+
+    return res.json({ ok: true, order_no: orderNo, status: newStatus });
+  } catch (e) {
+    console.error('[_force-pay] error', e);
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
 
 app.listen(PORT, () => console.log(`Server on :${PORT}`));
