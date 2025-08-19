@@ -1,4 +1,3 @@
-// app.js
 require('dotenv').config();
 
 const express = require('express');
@@ -12,24 +11,10 @@ const supabase = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/* ---------- Env helpers ---------- */
-const envStr = (k, d='') => (process.env[k] ?? d).toString().trim();
-const NEWEBPAY_BASE = envStr('NEWEBPAY_BASE') || 'https://ccore.newebpay.com';
+const NEWEBPAY_BASE = process.env.NEWEBPAY_BASE || 'https://ccore.newebpay.com';
 const PERIOD_ENDPOINT = `${NEWEBPAY_BASE}/MPG/period`;
-const MERCHANT_ID = envStr('MERCHANT_ID');
-const HASH_KEY_RAW = envStr('HASH_KEY');
-const HASH_IV_RAW  = envStr('HASH_IV');
 
-function keyIv() {
-  // 固定長度，避免末尾空白或複製錯誤造成長度不符
-  const k = Buffer.alloc(32, 0);
-  const i = Buffer.alloc(16, 0);
-  Buffer.from(HASH_KEY_RAW, 'utf8').copy(k);
-  Buffer.from(HASH_IV_RAW,  'utf8').copy(i);
-  return { k, i };
-}
-
-/* ---------- Logger with reqId ---------- */
+// ===== 日誌與 Request ID =====
 app.use((req, res, next) => {
   req.requestId = req.headers['x-request-id'] || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
   res.setHeader('X-Request-Id', req.requestId);
@@ -50,7 +35,6 @@ app.use((req, res, next) => {
   next();
 });
 
-/* ---------- CORS ---------- */
 app.use(cors({
   origin: [
     'https://leimaitech.com',
@@ -61,55 +45,69 @@ app.use(cors({
   ]
 }));
 
-/* ---------- Parsers ---------- */
-// 只給 /api/* 用 JSON，webhook 另外在路由層吃 raw
+// 只啟用 JSON（供 /api/* 使用）；不要全域掛 urlencoded，避免 webhook/表單衝撞
 app.use(bodyParser.json({ limit: '1mb' }));
 
-/* ---------- Static ---------- */
+// 靜態檔 + .html fallback（專案根目錄）
 app.use(express.static(path.join(__dirname), { extensions: ['html'] }));
 
-/* ---------- Utils ---------- */
+// ===== 小工具 =====
+function addDays(d, days){ const x=new Date(d.getTime()); x.setDate(x.getDate()+days); return x; }
+function yyyymmdd(date){ const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0'); return `${y}-${m}-${d}`; }
+
+function aesDecryptSmart(input, key, iv){
+  if (!input) throw new Error('empty enc');
+  // 有些情況會被 encode，一律先 decode 一次
+  const enc = decodeURIComponent(String(input));
+  const isHex = /^[0-9a-fA-F]+$/.test(enc) && enc.length % 2 === 0;
+
+  const tryWith = (fmt) => {
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key,'utf8'), Buffer.from(iv,'utf8'));
+    decipher.setAutoPadding(true);
+    let out = decipher.update(enc, fmt, 'utf8');
+    out += decipher.final('utf8');
+    return out;
+  };
+
+  try {
+    return isHex ? tryWith('hex') : tryWith('base64');
+  } catch {
+    // 互換再試一次
+    try {
+      return isHex ? tryWith('base64') : tryWith('hex');
+    } catch (e2) {
+      throw e2;
+    }
+  }
+}
+
 const isLineUserId = s => typeof s === 'string' && /^U[a-f0-9]{32}$/i.test(s);
-const addDays = (d, n) => { const x = new Date(d.getTime()); x.setDate(x.getDate()+n); return x; };
-const yyyymmdd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const sha256U = s => crypto.createHash('sha256').update(s).digest('hex').toUpperCase();
 
-function aesEncrypt(obj) {
-  const { k, i } = keyIv();
-  const cipher = crypto.createCipheriv('aes-256-cbc', k, i);
-  let enc = cipher.update(qs.stringify(obj), 'utf8', 'hex');
-  enc += cipher.final('hex');
-  return enc;
+// 解析 multipart/form-data（只處理純文字欄位）
+function parseMultipart(rawText, contentType) {
+  const m = /boundary="?([^";]+)"?/i.exec(contentType || '');
+  if (!m) return {};
+  const boundary = `--${m[1]}`;
+  const parts = rawText.split(boundary);
+  const out = {};
+  for (const p of parts) {
+    const nameMatch = /name="([^"]+)"/i.exec(p);
+    if (!nameMatch) continue;
+    const name = nameMatch[1];
+    const idx = p.indexOf('\r\n\r\n');
+    if (idx === -1) continue;
+    let val = p.slice(idx + 4);
+    val = val.replace(/\r\n--\s*$/,'').trim(); // 去尾端結束線
+    out[name] = val;
+  }
+  return out;
 }
 
-function isHex(s){ return typeof s==='string' && s.length%2===0 && /^[0-9a-f]+$/i.test(s); }
-function isB64(s){ return typeof s==='string' && /^[A-Za-z0-9+/=]+$/.test(s) && s.length%4===0; }
-
-function aesDecryptSmart(enc) {
-  const { k, i } = keyIv();
-  const tryHex = () => {
-    const d = crypto.createDecipheriv('aes-256-cbc', k, i);
-    d.setAutoPadding(true);
-    let out = d.update(enc, 'hex', 'utf8'); out += d.final('utf8'); return out;
-  };
-  const tryB64 = () => {
-    const d = crypto.createDecipheriv('aes-256-cbc', k, i);
-    d.setAutoPadding(true);
-    let out = d.update(enc, 'base64', 'utf8'); out += d.final('utf8'); return out;
-  };
-
-  if (isHex(enc)) return tryHex();
-  if (isB64(enc)) return tryB64();
-
-  // 不像 hex/b64，兩種都嘗試
-  try { return tryHex(); } catch {}
-  return tryB64();
-}
-
-/* ---------- BOT helpers ---------- */
-const GRACE_DAYS = Number(envStr('GRACE_DAYS') || 3);
+// ===== BOT 介接（供 webhook / cron 用）=====
+const GRACE_DAYS = Number(process.env.GRACE_DAYS || 3);
 function hmac(body){
-  return crypto.createHmac('sha256', envStr('BOT_SECRET') || '')
+  return crypto.createHmac('sha256', process.env.BOT_SECRET || '')
                .update(body).digest('hex');
 }
 async function callBot(url, payload, idemKey){
@@ -123,21 +121,21 @@ async function callBot(url, payload, idemKey){
       'X-Idempotency-Key': idemKey || payload.order_no || payload.user_id
     },
     body,
-    signal: AbortSignal.timeout(Number(envStr('BOT_TIMEOUT_MS') || 4000))
+    signal: AbortSignal.timeout(Number(process.env.BOT_TIMEOUT_MS || 4000))
   });
   return res.ok;
 }
 
-/* ---------- Pages ---------- */
+// ===== 顯式對應頁 =====
 const send = p => (req, res) => res.sendFile(path.join(__dirname, p));
 app.get(['/subscribe', '/subscribe/'], send('subscribe.html'));
 app.get(['/payment-result', '/payment-result/', '/payment-result.html'], send('payment-result.html'));
 app.get(['/crypto-linebot', '/crypto-linebot/'], send('crypto-linebot/index.html'));
 
-/* POST /payment-result → 303 帶 order_no 回前端 */
+// 結果頁：POST（藍新回跳）→ 303 帶上 ?order_no
 app.post(
   ['/payment-result', '/payment-result.html'],
-  express.urlencoded({ extended: false, limit: '1mb' }),
+  express.urlencoded({ extended: false, limit: '1mb' }), // 路由級 parser
   (req, res) => {
     const orderNo =
       req.body?.MerOrderNo ||
@@ -151,7 +149,7 @@ app.post(
   }
 );
 
-/* ---------- API: register ---------- */
+// ===== 使用者註冊 =====
 app.post('/api/register', async (req, res) => {
   try{
     const { userId, displayName, email, phone } = req.body || {};
@@ -174,7 +172,7 @@ app.post('/api/register', async (req, res) => {
   }catch(e){ console.error('[REGISTER] error', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-/* ---------- API: subscribe (create order) ---------- */
+// ===== 建單（支持月/年）=====
 app.post('/api/subscribe', async (req, res) => {
   try{
     const { userId, plan='pro', period='month', email } = req.body || {};
@@ -215,7 +213,7 @@ app.post('/api/subscribe', async (req, res) => {
   }catch(e){ console.error('[SUBSCRIBE] error', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-/* ---------- API: pay form (redirect to NewebPay) ---------- */
+// ===== 產生定期定額表單（隱收件人；只顯示付款人）=====
 app.get('/pay', async (req, res) => {
   try{
     const { order_no } = req.query;
@@ -244,16 +242,18 @@ app.get('/pay', async (req, res) => {
       EmailModify: 1,
       PaymentInfo: 'N',
       OrderInfo: 'N',
-      NotifyURL: envStr('PERIOD_NOTIFY_URL'),
-      ReturnURL: `${envStr('RETURN_URL_BASE') || 'https://leimaitech.com'}/payment-result.html?order_no=${order_no}`
+      NotifyURL: process.env.PERIOD_NOTIFY_URL,
+      ReturnURL: `${process.env.RETURN_URL_BASE || 'https://leimaitech.com'}/payment-result.html?order_no=${order_no}`
     };
 
-    const postDataEnc = aesEncrypt(periodInfoObj);
+    const key = process.env.HASH_KEY, iv = process.env.HASH_IV;
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(key,'utf8'), Buffer.from(iv,'utf8'));
+    let postDataEnc = cipher.update(qs.stringify(periodInfoObj), 'utf8', 'hex'); postDataEnc += cipher.final('hex');
 
     console.log('[PERIOD PAY] Params:', periodInfoObj);
     res.send(`
       <form id="periodPayForm" method="POST" action="${PERIOD_ENDPOINT}">
-        <input type="hidden" name="MerchantID_" value="${MERCHANT_ID}">
+        <input type="hidden" name="MerchantID_" value="${process.env.MERCHANT_ID}">
         <input type="hidden" name="PostData_" value="${postDataEnc}">
       </form>
       <script>document.getElementById('periodPayForm').submit();</script>
@@ -261,7 +261,7 @@ app.get('/pay', async (req, res) => {
   }catch(e){ console.error('[PERIOD PAY] error', e); res.status(500).send('Server error'); }
 });
 
-/* ---------- API: order status ---------- */
+// ===== 訂單狀態查詢（禁快取）=====
 app.get('/api/order-status', async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   const { order_no } = req.query;
@@ -271,25 +271,34 @@ app.get('/api/order-status', async (req, res) => {
   res.json({ status: order.status, order });
 });
 
-/* ---------- API: webhook (Period) ---------- */
+// ===== 定期定額 Webhook（同時支援 x-www-form-urlencoded / multipart/form-data）=====
 app.post(
   '/api/period-webhook',
-  express.text({ type: '*/*', limit: '1mb' }),
+  express.text({ type: '*/*', limit: '1mb' }), // 路由級 raw 文字
   async (req, res) => {
     const ct = req.headers['content-type'] || '';
     const rawText = typeof req.body === 'string' ? req.body : '';
     try {
       let payload = {};
-      if (rawText) payload = qs.parse(rawText);
-      else if (req.body && typeof req.body === 'object' && Object.keys(req.body).length) payload = req.body;
-      else if (req.query && Object.keys(req.query).length) payload = req.query;
+      if (ct.startsWith('application/x-www-form-urlencoded')) {
+        payload = qs.parse(rawText);
+      } else if (ct.startsWith('multipart/form-data')) {
+        payload = parseMultipart(rawText, ct);
+      } else if (ct.startsWith('application/json')) {
+        try { payload = JSON.parse(rawText); } catch { payload = {}; }
+      } else {
+        payload = qs.parse(rawText); // 盡量撈
+      }
 
       console.log('[WEBHOOK] ct=', ct, 'rawLen=', rawText.length, 'keys=', Object.keys(payload));
 
       const enc = payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '';
-      if (!enc) { console.warn('[WEBHOOK] 缺 enc'); return res.status(200).send('IGNORED'); }
+      if (!enc) {
+        console.warn('[WEBHOOK] 缺 enc');
+        return res.status(200).send('IGNORED');
+      }
 
-      // 事件指紋
+      // 去重：用 enc 做 hash
       const eventHash = crypto.createHash('sha256').update(enc).digest('hex');
       await supabase.from('webhook_events').upsert([{
         event_source: 'newebpay_period',
@@ -298,40 +307,32 @@ app.post(
         processed: false
       }], { onConflict: 'event_hash' });
 
-      // 驗證 TradeSha（不同欄位名都試一次）
+      const key = process.env.HASH_KEY, iv = process.env.HASH_IV;
+
+      // 簽章（有給才驗）
       const providedSha = payload.TradeSha || payload.TradeSHA || '';
       if (providedSha) {
-        const key = HASH_KEY_RAW, iv = HASH_IV_RAW;
-        const ok = [
-          `HashKey=${key}&${enc}&HashIV=${iv}`,                 // 未帶欄位名
-          `HashKey=${key}&PostData_=${enc}&HashIV=${iv}`,       // MPG
-          `HashKey=${key}&TradeInfo=${enc}&HashIV=${iv}`,       // 一次付
-          `HashKey=${key}&Period=${enc}&HashIV=${iv}`           // 定期定額
-        ].some(s => sha256U(s) === providedSha);
-        if (!ok) {
-          console.warn('[WEBHOOK] SHA mismatch');
-          await supabase.from('webhook_events').update({
-            payload: { sha_mismatch: true, providedSha, preview: enc.slice(0, 64) }
-          }).eq('event_hash', eventHash);
-          return res.status(200).send('IGNORED');
-        }
+        const candidates = [
+          `HashKey=${key}&${enc}&HashIV=${iv}`,
+          `HashKey=${key}&PostData_=${enc}&HashIV=${iv}`,
+          `HashKey=${key}&TradeInfo=${enc}&HashIV=${iv}`,
+          `HashKey=${key}&Period=${enc}&HashIV=${iv}`
+        ];
+        const ok = candidates.some(s => sha256U(s) === providedSha);
+        if (!ok) { console.warn('[WEBHOOK] SHA mismatch'); return res.status(200).send('IGNORED'); }
       }
 
-      // 解密（hex/base64 皆可）
       let decodedText = '';
       try {
-        decodedText = aesDecryptSmart(enc);
+        decodedText = aesDecryptSmart(enc, key, iv);
       } catch (e) {
-        console.error('[WEBHOOK] decrypt failed');
-        await supabase.from('webhook_events').update({
-          payload: { decrypt_failed: true, is_hex: isHex(enc), is_b64: isB64(enc), preview: enc.slice(0, 64) }
-        }).eq('event_hash', eventHash);
+        console.warn('[WEBHOOK] decrypt failed');
+        await supabase.from('webhook_events').update({ payload: { is_hex: /^[0-9a-fA-F]+$/.test(enc), sample: enc.slice(0,64) } }).eq('event_hash', eventHash);
         return res.status(200).send('IGNORED');
       }
 
       let result; try { result = JSON.parse(decodedText); } catch { result = qs.parse(decodedText); }
       console.log('[WEBHOOK] decoded:', result);
-
       await supabase.from('webhook_events').update({ payload: result }).eq('event_hash', eventHash);
 
       const merOrderNo =
@@ -345,7 +346,10 @@ app.post(
       const periodNo = result?.PeriodNo || result?.Result?.PeriodNo || result?.Result?.PeriodInfo || null;
 
       if (isSuccess) {
-        await supabase.from('orders').update({ status: 'paid', newebpay_period_no: periodNo || null, paid_at: new Date().toISOString() }).eq('order_no', merOrderNo);
+        await supabase.from('orders')
+          .update({ status: 'paid', paid_at: new Date().toISOString(), newebpay_period_no: periodNo })
+          .eq('order_no', merOrderNo);
+
         const { data: order } = await supabase.from('orders').select('*').eq('order_no', merOrderNo).maybeSingle();
 
         if (order) {
@@ -376,7 +380,7 @@ app.post(
           if (existing?.id) await supabase.from('subscriptions').update(subPayload).eq('id', existing.id);
           else await supabase.from('subscriptions').insert([subPayload]);
 
-          await callBot(envStr('BOT_UPSERT_URL'), {
+          await callBot(process.env.BOT_UPSERT_URL, {
             provider: 'line',
             user_id: order.user_id,
             plan: 'pro',
@@ -388,17 +392,23 @@ app.post(
 
         await supabase.from('transactions').insert([{
           order_no: merOrderNo,
+          user_id: order?.user_id || null,
           type: 'initial',
-          status: 'succeeded',
+          status: 'succeeded',              // <- 修正：表約束允許 succeeded
+          amount: order?.amount || null,
+          currency: order?.currency || 'TWD',
           gateway: 'newebpay',
           gateway_trade_no: periodNo,
           paid_at: new Date().toISOString(),
           raw_payload: result
         }]);
+
         console.log(`[WEBHOOK] OK ${merOrderNo} → paid / trialing`);
       } else {
         await supabase.from('orders').update({ status: 'failed' }).eq('order_no', merOrderNo);
-        await supabase.from('transactions').insert([{ order_no: merOrderNo, type:'initial', status:'failed', raw_payload: result }]);
+        await supabase.from('transactions').insert([{
+          order_no: merOrderNo, type:'initial', status:'failed', raw_payload: result
+        }]);
         console.log(`[WEBHOOK] FAIL ${merOrderNo}`);
       }
 
@@ -406,14 +416,60 @@ app.post(
       return res.status(200).send('OK');
     } catch (e) {
       console.error('[WEBHOOK] error', e);
-      return res.status(200).send('IGNORED');
+      return res.status(200).send('IGNORED'); // 避免重送風暴
     }
   }
 );
 
-/* ---------- CRON reconcile ---------- */
+// ===== 測試用：強制把訂單設為已付款（需要 TEST_TOKEN）=====
+app.post('/api/_force-pay', express.json(), async (req, res) => {
+  const token = req.query.token || req.headers['x-test-token'];
+  if (token !== (process.env.TEST_TOKEN || '')) return res.sendStatus(403);
+  const order_no = req.body?.order_no || req.query?.order_no;
+  if (!order_no) return res.status(400).json({ error: 'missing order_no' });
+
+  const { data: order } = await supabase.from('orders').select('*').eq('order_no', order_no).maybeSingle();
+  if (!order) return res.status(404).json({ error: 'order_not_found' });
+
+  const periodNo = `TEST-${Date.now()}`;
+  await supabase.from('orders')
+    .update({ status: 'paid', paid_at: new Date().toISOString(), newebpay_period_no: periodNo })
+    .eq('order_no', order_no);
+
+  const subPayload = {
+    user_id: order.user_id,
+    plan: 'pro',
+    period: order.period,
+    status: 'trialing',
+    trial_start: order.trial_start,
+    trial_end: order.trial_end,
+    current_period_start: order.trial_start,
+    current_period_end: order.trial_end,
+    period_type: order.period_type,
+    period_point: order.period_point,
+    period_times: 99,
+    gateway: 'manual',
+    gateway_period_no: periodNo
+  };
+  const { data: existing } = await supabase
+    .from('subscriptions').select('id,status')
+    .eq('user_id', order.user_id).eq('plan','pro')
+    .in('status',['trialing','active','past_due']).maybeSingle();
+  if (existing?.id) await supabase.from('subscriptions').update(subPayload).eq('id', existing.id);
+  else await supabase.from('subscriptions').insert([subPayload]);
+
+  await supabase.from('transactions').insert([{
+    order_no, user_id: order.user_id, type:'initial', status:'succeeded',
+    amount: order.amount, currency: order.currency, gateway:'manual',
+    gateway_trade_no: periodNo, paid_at: new Date().toISOString(), raw_payload:{ forced:true }
+  }]);
+
+  res.json({ ok:true, order_no, period_no: periodNo });
+});
+
+// ===== 每日對帳：過期或取消就移除白名單 =====
 app.post('/cron/reconcile', async (req, res) => {
-  if ((req.query.token || '') !== envStr('CRON_TOKEN')) return res.sendStatus(403);
+  if ((req.query.token || '') !== process.env.CRON_TOKEN) return res.sendStatus(403);
   const now = Date.now(), graceMs = GRACE_DAYS * 86400000;
 
   const { data: subs, error } = await supabase
@@ -428,7 +484,7 @@ app.post('/cron/reconcile', async (req, res) => {
     const keep = (s.status === 'trialing' || s.status === 'active' || s.status === 'past_due')
               && (end + graceMs > now);
     if (!keep) {
-      const ok = await callBot(envStr('BOT_REMOVE_URL'), {
+      const ok = await callBot(process.env.BOT_REMOVE_URL, {
         provider: 'line',
         user_id: s.user_id,
         reason: s.status === 'canceled' ? 'canceled' : 'expired'
@@ -439,28 +495,7 @@ app.post('/cron/reconcile', async (req, res) => {
   res.json({ ok: true, checked: (subs || []).length, removed, grace_days: GRACE_DAYS });
 });
 
-/* ---------- Test endpoints ---------- */
 // 健康檢查
 app.get('/api/health', (req,res)=>res.json({ ok:true, ts:new Date().toISOString() }));
 
-// 強制把訂單設為已付（測試用）
-app.post('/api/mock/force-paid', async (req, res) => {
-  if ((req.query.token || '') !== envStr('CRON_TOKEN')) return res.sendStatus(403);
-  const order_no = req.query.order_no || req.body?.order_no;
-  if (!order_no) return res.status(400).json({ error: 'missing order_no' });
-
-  const { data: order } = await supabase.from('orders').select('*').eq('order_no', order_no).maybeSingle();
-  if (!order) return res.status(404).json({ error: 'order_not_found' });
-
-  await supabase.from('orders').update({ status:'paid', paid_at: new Date().toISOString() }).eq('order_no', order_no);
-  await supabase.from('transactions').insert([{
-    order_no, user_id: order.user_id, type: 'initial', status: 'succeeded',
-    amount: order.amount, currency: order.currency, paid_at: new Date().toISOString(),
-    raw_payload: { mocked: true }
-  }]);
-
-  res.json({ ok:true, order_no, forced:true });
-});
-
-/* ---------- Start ---------- */
 app.listen(PORT, () => console.log(`Server on :${PORT}`));
