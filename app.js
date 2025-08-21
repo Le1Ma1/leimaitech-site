@@ -284,7 +284,6 @@ app.get('/api/order-status', async (req, res) => {
 app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), async (req, res) => {
   const ct = req.headers['content-type'] || '';
   const rawText = typeof req.body === 'string' ? req.body : '';
-
   try {
     let payload = {};
     if (ct.startsWith('application/x-www-form-urlencoded')) {
@@ -307,6 +306,7 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
       return res.status(200).send('IGNORED'); 
     }
 
+    // 一進來就記錄事件
     const eventHash = crypto.createHash('sha256').update(enc).digest('hex');
     await supabase.from('webhook_events').upsert([{
       event_source: 'newebpay_period',
@@ -317,6 +317,7 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
       payload: { enc_len: enc.length }
     }], { onConflict: 'event_hash' });
 
+    // 驗簽
     const providedSha = payload.TradeSha || payload.TradeSHA || '';
     if (providedSha) {
       const candidates = [
@@ -329,6 +330,7 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
       if (!pass) console.warn('[WEBHOOK] SHA mismatch');
     }
 
+    // 解密
     let decoded;
     try {
       decoded = aesDecrypt(enc);
@@ -344,14 +346,17 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
     let result; 
     try { result = JSON.parse(decoded.text); } 
     catch { result = qs.parse(decoded.text); }
-
     console.log('[WEBHOOK] decoded ok (fmt=' + decoded.fmt + ') =>', result);
     await supabase.from('webhook_events').update({ payload: { ...result, decrypt_ok:true } }).eq('event_hash', eventHash);
 
+    // ---- 關鍵：訂單更新邏輯 ----
     const merOrderNo =
       result?.MerOrderNo || result?.MerchantOrderNo ||
       result?.Result?.MerOrderNo || result?.Result?.MerchantOrderNo;
-    if (!merOrderNo) { console.warn('[WEBHOOK] 無 MerOrderNo'); return res.status(200).send('IGNORED'); }
+    if (!merOrderNo) { 
+      console.warn('[WEBHOOK] 無 MerOrderNo'); 
+      return res.status(200).send('IGNORED'); 
+    }
 
     const respondCode = result?.Result?.RespondCode || result?.RespondCode || result?.ReturnCode || result?.RtnCode;
     const status = String(result?.Status || '').toUpperCase();
