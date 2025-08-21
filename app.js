@@ -118,8 +118,8 @@ function parseMultipart(rawText, contentType) {
 
 /* AES 解密 */
 function aesDecrypt(enc) {
-  const k = Buffer.from(HASH_KEY, 'utf8');
-  const v = Buffer.from(HASH_IV , 'utf8');
+  const k = Buffer.from(HASH_KEY, 'hex');
+  const v = Buffer.from(HASH_IV , 'hex');
   if (k.length !== 32 || v.length !== 16) throw new Error('bad key/iv length');
 
   const decipher = crypto.createDecipheriv('aes-256-cbc', k, v);
