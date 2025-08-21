@@ -26,8 +26,8 @@ const GRACE_DAYS     = Number(process.env.GRACE_DAYS || 3);
 
 /* ===== 啟動自檢 ===== */
 (function bootCheck(){
-  const k = Buffer.from(HASH_KEY, 'hex');
-  const v = Buffer.from(HASH_IV , 'hex');
+  const k = Buffer.from(HASH_KEY, 'utf8');
+  const v = Buffer.from(HASH_IV , 'utf8');
   console.log('[BOOT]', {
     base: NEWEBPAY_BASE,
     merchant: process.env.MERCHANT_ID || '(unset)',
@@ -261,9 +261,10 @@ app.get('/pay', async (req, res) => {
     };
 
     // PostData_ = AES-256-CBC(key/iv 為十六進位 bytes) → hex 字串
-    const keyBuf = Buffer.from(HASH_KEY, 'hex');
-    const ivBuf  = Buffer.from(HASH_IV , 'hex');
+    const keyBuf = Buffer.from(HASH_KEY, 'utf8');
+    const ivBuf  = Buffer.from(HASH_IV , 'utf8');
     const cipher = crypto.createCipheriv('aes-256-cbc', keyBuf, ivBuf);
+
     let postDataEnc = cipher.update(qs.stringify(periodInfoObj), 'utf8', 'hex'); postDataEnc += cipher.final('hex');
 
     console.log('[PERIOD PAY] Params:', periodInfoObj);
