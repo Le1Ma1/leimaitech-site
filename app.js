@@ -17,8 +17,8 @@ const NEWEBPAY_BASE = (process.env.NEWEBPAY_BASE || 'https://core.newebpay.com')
 const PERIOD_ENDPOINT = `${NEWEBPAY_BASE}/MPG/period`;
 
 /* ===== 正式金鑰（十六進位字串）===== */
-const HASH_KEY_HEX = (process.env.HASH_KEY || '').trim();
-const HASH_IV_HEX  = (process.env.HASH_IV  || '').trim();
+const HASH_KEY = (process.env.HASH_KEY || '').trim();
+const HASH_IV  = (process.env.HASH_IV  || '').trim();
 
 /* ===== 其他設定 ===== */
 const BOT_TIMEOUT_MS = Number(process.env.BOT_TIMEOUT_MS || 4000);
@@ -35,7 +35,7 @@ const GRACE_DAYS     = Number(process.env.GRACE_DAYS || 3);
     ivBytes: v.length
   });
   if (k.length !== 32 || v.length !== 16) {
-    console.error('[BOOT] HASH_KEY/HASH_IV 長度不正確（需 32/16 bytes，且為十六進位字串）。');
+    console.error('[BOOT] HASH_KEY/HASH_IV 長度不正確（需 32/16 bytes utf8）。');
   }
 })();
 
@@ -121,8 +121,8 @@ function parseMultipart(rawText, contentType) {
 
 /* AES：以十六進位的 Key/IV；密文優先視為 hex，失敗再以 base64 */
 function aesDecrypt(enc) {
-  const k = Buffer.from(HASH_KEY_HEX, 'hex');
-  const v = Buffer.from(HASH_IV_HEX , 'hex');
+  const k = Buffer.from(HASH_KEY, 'utf8');
+  const v = Buffer.from(HASH_IV , 'utf8');
   if (k.length !== 32 || v.length !== 16) throw new Error('bad key/iv length');
 
   const tryFmt = (fmt) => {
