@@ -120,11 +120,18 @@ function parseMultipart(rawText, contentType) {
 function aesDecrypt(enc) {
   const k = Buffer.from(HASH_KEY, 'utf8');
   const v = Buffer.from(HASH_IV , 'utf8');
-  const d = crypto.createDecipheriv('aes-256-cbc', k, v);
-  d.setAutoPadding(true);
-  let out = d.update(enc, 'hex', 'utf8'); 
-  out += d.final('utf8');
-  return { ok:true, text: out, fmt:'hex' };
+  if (k.length !== 32 || v.length !== 16) throw new Error('bad key/iv length');
+
+  const decipher = crypto.createDecipheriv('aes-256-cbc', k, v);
+  decipher.setAutoPadding(true);
+
+  // 這裡不要直接轉 utf8，先拿 buffer
+  let decoded = Buffer.concat([
+    decipher.update(Buffer.from(enc, 'hex')),
+    decipher.final()
+  ]);
+
+  return { ok:true, text: decoded.toString('utf8'), fmt:'hex' };
 }
 
 /* ===== 顯式頁面 ===== */
