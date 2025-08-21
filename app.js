@@ -26,8 +26,8 @@ const GRACE_DAYS     = Number(process.env.GRACE_DAYS || 3);
 
 /* ===== 啟動自檢 ===== */
 (function bootCheck(){
-  const k = Buffer.from(HASH_KEY_HEX, 'hex');
-  const v = Buffer.from(HASH_IV_HEX , 'hex');
+  const k = Buffer.from(HASH_KEY, 'hex');
+  const v = Buffer.from(HASH_IV , 'hex');
   console.log('[BOOT]', {
     base: NEWEBPAY_BASE,
     merchant: process.env.MERCHANT_ID || '(unset)',
@@ -261,8 +261,8 @@ app.get('/pay', async (req, res) => {
     };
 
     // PostData_ = AES-256-CBC(key/iv 為十六進位 bytes) → hex 字串
-    const keyBuf = Buffer.from(HASH_KEY_HEX, 'hex');
-    const ivBuf  = Buffer.from(HASH_IV_HEX , 'hex');
+    const keyBuf = Buffer.from(HASH_KEY, 'hex');
+    const ivBuf  = Buffer.from(HASH_IV , 'hex');
     const cipher = crypto.createCipheriv('aes-256-cbc', keyBuf, ivBuf);
     let postDataEnc = cipher.update(qs.stringify(periodInfoObj), 'utf8', 'hex'); postDataEnc += cipher.final('hex');
 
@@ -321,10 +321,10 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
     const providedSha = payload.TradeSha || payload.TradeSHA || '';
     if (providedSha) {
       const candidates = [
-        `HashKey=${HASH_KEY_HEX}&${enc}&HashIV=${HASH_IV_HEX}`,
-        `HashKey=${HASH_KEY_HEX}&PostData_=${enc}&HashIV=${HASH_IV_HEX}`,
-        `HashKey=${HASH_KEY_HEX}&TradeInfo=${enc}&HashIV=${HASH_IV_HEX}`,
-        `HashKey=${HASH_KEY_HEX}&Period=${enc}&HashIV=${HASH_IV_HEX}`
+        `HashKey=${HASH_KEY}&${enc}&HashIV=${HASH_IV}`,
+        `HashKey=${HASH_KEY}&PostData_=${enc}&HashIV=${HASH_IV}`,
+        `HashKey=${HASH_KEY}&TradeInfo=${enc}&HashIV=${HASH_IV}`,
+        `HashKey=${HASH_KEY}&Period=${enc}&HashIV=${HASH_IV}`
       ];
       const pass = candidates.some(s => sha256U(s) === providedSha);
       if (!pass) console.warn('[WEBHOOK] SHA mismatch');
