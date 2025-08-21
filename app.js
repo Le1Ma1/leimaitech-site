@@ -12,21 +12,34 @@ const supabase = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ====== Env & constants ======
+/* ===== 環境（正式） ===== */
 const NEWEBPAY_BASE = (process.env.NEWEBPAY_BASE || 'https://core.newebpay.com').trim();
 const PERIOD_ENDPOINT = `${NEWEBPAY_BASE}/MPG/period`;
 
-const HASH_KEY = (process.env.HASH_KEY || '').trim();
-const HASH_IV  = (process.env.HASH_IV  || '').trim();
-const GRACE_DAYS = Number(process.env.GRACE_DAYS || 3);
+/* ===== 正式金鑰（十六進位字串）===== */
+const HASH_KEY_HEX = (process.env.HASH_KEY || '').trim();
+const HASH_IV_HEX  = (process.env.HASH_IV  || '').trim();
+
+/* ===== 其他設定 ===== */
 const BOT_TIMEOUT_MS = Number(process.env.BOT_TIMEOUT_MS || 4000);
+const GRACE_DAYS     = Number(process.env.GRACE_DAYS || 3);
 
-// quick sanity log
-console.log('[BOOT] NEWEBPAY_BASE=', NEWEBPAY_BASE);
-console.log('[BOOT] MERCHANT_ID=', process.env.MERCHANT_ID || '(unset)');
-console.log('[BOOT] HASH_KEY bytes=', Buffer.byteLength(HASH_KEY, 'utf8'), ', HASH_IV bytes=', Buffer.byteLength(HASH_IV, 'utf8'));
+/* ===== 啟動自檢 ===== */
+(function bootCheck(){
+  const k = Buffer.from(HASH_KEY_HEX, 'hex');
+  const v = Buffer.from(HASH_IV_HEX , 'hex');
+  console.log('[BOOT]', {
+    base: NEWEBPAY_BASE,
+    merchant: process.env.MERCHANT_ID || '(unset)',
+    keyBytes: k.length,
+    ivBytes: v.length
+  });
+  if (k.length !== 32 || v.length !== 16) {
+    console.error('[BOOT] HASH_KEY/HASH_IV 長度不正確（需 32/16 bytes，且為十六進位字串）。');
+  }
+})();
 
-// ====== logging with req id ======
+/* ===== 日誌 + reqId ===== */
 app.use((req, res, next) => {
   req.requestId = req.headers['x-request-id'] || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
   res.setHeader('X-Request-Id', req.requestId);
@@ -47,6 +60,7 @@ app.use((req, res, next) => {
   next();
 });
 
+/* ===== CORS / Parser / 靜態 ===== */
 app.use(cors({
   origin: [
     'https://leimaitech.com',
@@ -56,23 +70,17 @@ app.use(cors({
     'http://127.0.0.1:3000'
   ]
 }));
-
-// only JSON globally; avoid global urlencoded to not fight webhook/form posts
-app.use(bodyParser.json({ limit: '1mb' }));
-
-// static files + .html fallback
+app.use(bodyParser.json({ limit: '1mb' }));               // 只給 /api/*
 app.use(express.static(path.join(__dirname), { extensions: ['html'] }));
 
-// ====== helpers ======
+/* ===== 工具 ===== */
 const isLineUserId = s => typeof s === 'string' && /^U[a-f0-9]{32}$/i.test(s);
 const sha256U = s => crypto.createHash('sha256').update(s).digest('hex').toUpperCase();
-
-function addDays(d, days){ const x=new Date(d.getTime()); x.setDate(x.getDate()+days); return x; }
-function yyyymmdd(date){ const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0'); return `${y}-${m}-${d}`; }
+const addDays = (d, n)=>{ const x=new Date(d.getTime()); x.setDate(x.getDate()+n); return x; };
+const ymd = d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
 function hmac(body){
-  return crypto.createHmac('sha256', process.env.BOT_SECRET || '')
-               .update(body).digest('hex');
+  return crypto.createHmac('sha256', process.env.BOT_SECRET || '').update(body).digest('hex');
 }
 async function callBot(url, payload, idemKey){
   if (!url) return false;
@@ -90,65 +98,55 @@ async function callBot(url, payload, idemKey){
   return res.ok;
 }
 
-// parse multipart/form-data (text-only fields), precisely trimming trailing CRLF
+/* multipart 解析（僅取文字欄位，精準去尾端 CRLF） */
 function parseMultipart(rawText, contentType) {
   const m = /boundary="?([^";]+)"?/i.exec(contentType || '');
   if (!m) return {};
   const boundary = `--${m[1]}`;
-  const pieces = rawText.split(boundary);
+  const list = rawText.split(boundary);
   const out = {};
-  for (const chunk of pieces) {
-    if (!/Content-Disposition/i.test(chunk)) continue;
-    const nameMatch = /name="([^"]+)"/i.exec(chunk);
+  for (const part of list) {
+    if (!/Content-Disposition/i.test(part)) continue;
+    const nameMatch = /name="([^"]+)"/i.exec(part);
     if (!nameMatch) continue;
     const name = nameMatch[1];
-    const idx = chunk.indexOf('\r\n\r\n');
+    const idx = part.indexOf('\r\n\r\n');
     if (idx === -1) continue;
-    const body = chunk.slice(idx + 4);
+    const body = part.slice(idx + 4);
     const endIdx = body.lastIndexOf('\r\n');
-    const val = (endIdx >= 0 ? body.slice(0, endIdx) : body);
-    out[name] = val;
+    out[name] = (endIdx >= 0 ? body.slice(0, endIdx) : body);
   }
   return out;
 }
 
-// normalize & try-all AES
-function normalizeEnc(s) {
-  // 去掉所有空白與換行，避免 multipart 解析留下的 CRLF/空白
-  return String(s).trim().replace(/[\r\n\s]+/g, '');
-}
-function tryAES(enc, key, iv) {
-  // encFmt: hex/base64; keyFmt/ivFmt: utf8/hex
-  const encLooksHex = /^[0-9a-fA-F]+$/.test(enc) && enc.length % 2 === 0;
-  const encOrder = encLooksHex ? ['hex','base64'] : ['base64','hex'];
-  const bufFmts = ['utf8', 'hex'];
+/* AES：以十六進位的 Key/IV；密文優先視為 hex，失敗再以 base64 */
+function aesDecrypt(enc) {
+  const k = Buffer.from(HASH_KEY_HEX, 'hex');
+  const v = Buffer.from(HASH_IV_HEX , 'hex');
+  if (k.length !== 32 || v.length !== 16) throw new Error('bad key/iv length');
 
-  for (const encFmt of encOrder) {
-    for (const kFmt of bufFmts) {
-      for (const iFmt of bufFmts) {
-        try {
-          const k = Buffer.from(key, kFmt);
-          const v = Buffer.from(iv,  iFmt);
-          if (k.length !== 32 || v.length !== 16) continue;
-          const decipher = crypto.createDecipheriv('aes-256-cbc', k, v);
-          decipher.setAutoPadding(true);
-          let out = decipher.update(enc, encFmt, 'utf8');
-          out += decipher.final('utf8');
-          return { ok:true, text: out, encFmt, kFmt, iFmt };
-        } catch {}
-      }
-    }
+  const tryFmt = (fmt) => {
+    const d = crypto.createDecipheriv('aes-256-cbc', k, v);
+    d.setAutoPadding(true);
+    let out = d.update(enc, fmt, 'utf8'); out += d.final('utf8');
+    return out;
+  };
+
+  const looksHex = /^[0-9a-fA-F]+$/.test(enc) && enc.length % 2 === 0;
+  const order = looksHex ? ['hex','base64'] : ['base64','hex'];
+  for (const fmt of order) {
+    try { return { ok:true, text: tryFmt(fmt), fmt }; } catch {}
   }
   return { ok:false };
 }
 
-// ====== pages ======
+/* ===== 顯式頁面 ===== */
 const send = p => (req, res) => res.sendFile(path.join(__dirname, p));
 app.get(['/subscribe', '/subscribe/'], send('subscribe.html'));
 app.get(['/payment-result', '/payment-result/', '/payment-result.html'], send('payment-result.html'));
 app.get(['/crypto-linebot', '/crypto-linebot/'], send('crypto-linebot/index.html'));
 
-// POST -> result page (carry order_no)
+/* ===== Return：POST → 303 帶上 ?order_no ===== */
 app.post(
   ['/payment-result', '/payment-result.html'],
   express.urlencoded({ extended: false, limit: '1mb' }),
@@ -165,9 +163,7 @@ app.post(
   }
 );
 
-// ====== API ======
-
-// register
+/* ===== API：register ===== */
 app.post('/api/register', async (req, res) => {
   try{
     const { userId, displayName, email, phone } = req.body || {};
@@ -190,7 +186,7 @@ app.post('/api/register', async (req, res) => {
   }catch(e){ console.error('[REGISTER] error', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-// create order
+/* ===== API：subscribe（建單）===== */
 app.post('/api/subscribe', async (req, res) => {
   try{
     const { userId, plan='pro', period='month', email } = req.body || {};
@@ -220,18 +216,18 @@ app.post('/api/subscribe', async (req, res) => {
       order_no, user_id:userId, plan, period, status:'pending',
       amount:Amt, currency:'TWD', email:email||null,
       trial_days:trialDays, trial_start:now.toISOString(), trial_end:trialEnd.toISOString(),
-      first_charge_date: yyyymmdd(firstChargeDate),
+      first_charge_date: ymd(firstChargeDate),
       period_type: PeriodType, period_point: PeriodPoint,
       created_at: now.toISOString(),
     }]);
     if (orderErr) return res.status(500).json({ error:'db_insert_order' });
 
-    console.log(`[SUBSCRIBE] 建單: ${order_no} LINE:${userId} Amt:${Amt} 首扣:${yyyymmdd(firstChargeDate)} PType:${PeriodType} PPoint:${PeriodPoint}`);
+    console.log(`[SUBSCRIBE] 建單: ${order_no} LINE:${userId} Amt:${Amt} 首扣:${ymd(firstChargeDate)} PType:${PeriodType} PPoint:${PeriodPoint}`);
     res.json({ message:'訂單已建立', order_no });
   }catch(e){ console.error('[SUBSCRIBE] error', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-// pay page (auto-submit to NewebPay)
+/* ===== 產生定期定額表單（建立委託 NPA‑B05）===== */
 app.get('/pay', async (req, res) => {
   try{
     const { order_no } = req.query;
@@ -254,17 +250,20 @@ app.get('/pay', async (req, res) => {
       PeriodAmt: order.amount,
       PeriodType: order.period_type,
       PeriodPoint: order.period_point,
-      PeriodStartType: '1',
+      PeriodStartType: '1',          // 1=十元授權；2=立即以委託金額授權；3=不檢查
       PeriodTimes: 99,
       PayerEmail: order.email || 'test@example.com',
       EmailModify: 1,
       PaymentInfo: 'N',
       OrderInfo: 'N',
       NotifyURL: process.env.PERIOD_NOTIFY_URL,
-      ReturnURL: `${process.env.RETURN_URL_BASE || 'https://leimaitech.com'}/payment-result.html?order_no=${order_no}`
+      ReturnURL: `${(process.env.RETURN_URL_BASE || 'https://api.leimaitech.com').replace(/\/+$/,'')}/payment-result.html?order_no=${order_no}`
     };
 
-    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(HASH_KEY,'utf8'), Buffer.from(HASH_IV,'utf8'));
+    // PostData_ = AES-256-CBC(key/iv 為十六進位 bytes) → hex 字串
+    const keyBuf = Buffer.from(HASH_KEY_HEX, 'hex');
+    const ivBuf  = Buffer.from(HASH_IV_HEX , 'hex');
+    const cipher = crypto.createCipheriv('aes-256-cbc', keyBuf, ivBuf);
     let postDataEnc = cipher.update(qs.stringify(periodInfoObj), 'utf8', 'hex'); postDataEnc += cipher.final('hex');
 
     console.log('[PERIOD PAY] Params:', periodInfoObj);
@@ -278,7 +277,7 @@ app.get('/pay', async (req, res) => {
   }catch(e){ console.error('[PERIOD PAY] error', e); res.status(500).send('Server error'); }
 });
 
-// order status (no-cache)
+/* ===== 查單（禁快取）===== */
 app.get('/api/order-status', async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   const { order_no } = req.query;
@@ -288,11 +287,12 @@ app.get('/api/order-status', async (req, res) => {
   res.json({ status: order.status, order });
 });
 
-// ===== webhook: period =====
+/* ===== Webhook：定期定額 Notify（Period）===== */
 app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), async (req, res) => {
   const ct = req.headers['content-type'] || '';
   const rawText = typeof req.body === 'string' ? req.body : '';
   try {
+    // 解析 payload
     let payload = {};
     if (ct.startsWith('application/x-www-form-urlencoded')) {
       payload = qs.parse(rawText);
@@ -304,19 +304,11 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
       payload = qs.parse(rawText);
     }
 
-    const encRaw = payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '';
-    const hasEnc = !!encRaw;
+    const enc = (payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '').trim();
+    console.log('[WEBHOOK]', { ct, rawLen: rawText.length, keys: Object.keys(payload), hasEnc: !!enc });
+    if (!enc) { console.warn('[WEBHOOK] 缺 Period'); return res.status(200).send('IGNORED'); }
 
-    console.log('[WEBHOOK]', { ct, rawLen: rawText.length, keys: Object.keys(payload), hasEnc });
-
-    if (!hasEnc) {
-      console.warn('[WEBHOOK] missing enc');
-      return res.status(200).send('IGNORED');
-    }
-
-    const enc = normalizeEnc(encRaw);
-
-    // de-dup
+    // 事件去重
     const eventHash = crypto.createHash('sha256').update(enc).digest('hex');
     await supabase.from('webhook_events').upsert([{
       event_source: 'newebpay_period',
@@ -325,55 +317,40 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
       processed: false
     }], { onConflict: 'event_hash' });
 
-    // verify signature if provided (optional)
+    // 簽章（若有）
     const providedSha = payload.TradeSha || payload.TradeSHA || '';
     if (providedSha) {
       const candidates = [
-        `HashKey=${HASH_KEY}&${enc}&HashIV=${HASH_IV}`,
-        `HashKey=${HASH_KEY}&PostData_=${enc}&HashIV=${HASH_IV}`,
-        `HashKey=${HASH_KEY}&TradeInfo=${enc}&HashIV=${HASH_IV}`,
-        `HashKey=${HASH_KEY}&Period=${enc}&HashIV=${HASH_IV}`,
+        `HashKey=${HASH_KEY_HEX}&${enc}&HashIV=${HASH_IV_HEX}`,
+        `HashKey=${HASH_KEY_HEX}&PostData_=${enc}&HashIV=${HASH_IV_HEX}`,
+        `HashKey=${HASH_KEY_HEX}&TradeInfo=${enc}&HashIV=${HASH_IV_HEX}`,
+        `HashKey=${HASH_KEY_HEX}&Period=${enc}&HashIV=${HASH_IV_HEX}`
       ];
       const pass = candidates.some(s => sha256U(s) === providedSha);
-      if (!pass) {
-        console.warn('[WEBHOOK] SHA mismatch');
-        // 不中斷；有些情境不會帶 SHA
-      }
+      if (!pass) console.warn('[WEBHOOK] SHA mismatch');
     }
 
-    // decrypt (try-all with prod keys)
-    const d = tryAES(enc, HASH_KEY, HASH_IV);
-    if (!d.ok) {
+    // 解密（優先 hex，再 base64；Key/IV 均以 hex 轉 bytes）
+    let decoded;
+    try {
+      decoded = aesDecrypt(enc);
+      if (!decoded.ok) throw new Error('bad decrypt');
+    } catch (e) {
       console.warn('[WEBHOOK] decrypt failed');
-      await supabase.from('webhook_events')
-        .update({
-          payload: {
-            decrypt_env: 'prod',
-            decrypt_ok: false,
-            enc_is_hex: /^[0-9a-fA-F]+$/.test(enc),
-            enc_len: enc.length,
-            sample: enc.slice(0, 64)
-          }
-        })
-        .eq('event_hash', eventHash);
+      await supabase.from('webhook_events').update({
+        payload: { decrypt_ok:false, enc_is_hex:/^[0-9a-fA-F]+$/.test(enc), enc_len:enc.length, head32:enc.slice(0,32), tail32:enc.slice(-32) }
+      }).eq('event_hash', eventHash);
       return res.status(200).send('IGNORED');
     }
 
-    let result; 
-    try { result = JSON.parse(d.text); } catch { result = qs.parse(d.text); }
-    console.log('[WEBHOOK] decoded by', { encFmt: d.encFmt, kFmt: d.kFmt, iFmt: d.iFmt }, '=>', result);
-
-    await supabase.from('webhook_events')
-      .update({ payload: { ...result, decrypt_ok: true } })
-      .eq('event_hash', eventHash);
+    let result; try { result = JSON.parse(decoded.text); } catch { result = qs.parse(decoded.text); }
+    console.log('[WEBHOOK] decoded ok (fmt=' + decoded.fmt + ') =>', result);
+    await supabase.from('webhook_events').update({ payload: { ...result, decrypt_ok:true } }).eq('event_hash', eventHash);
 
     const merOrderNo =
       result?.MerOrderNo || result?.MerchantOrderNo ||
       result?.Result?.MerOrderNo || result?.Result?.MerchantOrderNo;
-    if (!merOrderNo) {
-      console.warn('[WEBHOOK] no MerOrderNo');
-      return res.status(200).send('IGNORED');
-    }
+    if (!merOrderNo) { console.warn('[WEBHOOK] 無 MerOrderNo'); return res.status(200).send('IGNORED'); }
 
     const respondCode = result?.Result?.RespondCode || result?.RespondCode || result?.ReturnCode || result?.RtnCode;
     const status = String(result?.Status || '').toUpperCase();
@@ -382,7 +359,7 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
 
     if (isSuccess) {
       await supabase.from('orders')
-        .update({ status: 'paid', paid_at: new Date().toISOString(), newebpay_period_no: periodNo })
+        .update({ status:'paid', paid_at:new Date().toISOString(), newebpay_period_no: periodNo })
         .eq('order_no', merOrderNo);
 
       const { data: order } = await supabase.from('orders').select('*').eq('order_no', merOrderNo).maybeSingle();
@@ -427,11 +404,11 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
 
       await supabase.from('transactions').insert([{
         order_no: merOrderNo,
-        user_id: null, // optional backfill below
+        user_id: order?.user_id || null,
         type: 'initial',
         status: 'succeeded',
-        amount: null,
-        currency: 'TWD',
+        amount: order?.amount || null,
+        currency: order?.currency || 'TWD',
         gateway: 'newebpay',
         gateway_trade_no: periodNo,
         paid_at: new Date().toISOString(),
@@ -440,22 +417,22 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
 
       console.log(`[WEBHOOK] OK ${merOrderNo} → paid / trialing`);
     } else {
-      await supabase.from('orders').update({ status: 'failed' }).eq('order_no', merOrderNo);
+      await supabase.from('orders').update({ status:'failed' }).eq('order_no', merOrderNo);
       await supabase.from('transactions').insert([{
         order_no: merOrderNo, type:'initial', status:'failed', raw_payload: result
       }]);
       console.log(`[WEBHOOK] FAIL ${merOrderNo}`);
     }
 
-    await supabase.from('webhook_events').update({ processed: true }).eq('event_hash', eventHash);
+    await supabase.from('webhook_events').update({ processed:true }).eq('event_hash', eventHash);
     return res.status(200).send('OK');
   } catch (e) {
     console.error('[WEBHOOK] error', e);
-    return res.status(200).send('IGNORED'); // avoid re-delivery storm
+    return res.status(200).send('IGNORED');
   }
 });
 
-// reconcile cron
+/* ===== 每日對帳：過期或取消就移除白名單 ===== */
 app.post('/cron/reconcile', async (req, res) => {
   if ((req.query.token || '') !== process.env.CRON_TOKEN) return res.sendStatus(403);
   const now = Date.now(), graceMs = GRACE_DAYS * 86400000;
@@ -480,10 +457,10 @@ app.post('/cron/reconcile', async (req, res) => {
       if (ok) removed++;
     }
   }
-  res.json({ ok: true, checked: (subs || []).length, removed, grace_days: GRACE_DAYS });
+  res.json({ ok:true, checked:(subs||[]).length, removed, grace_days:GRACE_DAYS });
 });
 
-// health
+/* ===== 健康檢查 ===== */
 app.get('/api/health', (req,res)=>res.json({ ok:true, ts:new Date().toISOString() }));
 
 app.listen(PORT, () => console.log(`Server on :${PORT}`));
