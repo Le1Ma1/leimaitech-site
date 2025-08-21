@@ -118,8 +118,8 @@ function parseMultipart(rawText, contentType) {
 
 /* AES 解密 */
 function aesDecrypt(enc) {
-  const k = Buffer.from(HASH_KEY, 'hex');
-  const v = Buffer.from(HASH_IV , 'hex');
+  const k = Buffer.from(HASH_KEY, 'utf8');
+  const v = Buffer.from(HASH_IV , 'utf8');
   if (k.length !== 32 || v.length !== 16) throw new Error('bad key/iv length');
 
   const decipher = crypto.createDecipheriv('aes-256-cbc', k, v);
@@ -299,7 +299,13 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
 
     const enc = (payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '').trim();
     console.log('[WEBHOOK]', { ct, rawLen: rawText.length, keys: Object.keys(payload), hasEnc: !!enc });
-    if (!enc) { console.warn('[WEBHOOK] 缺 Period'); return res.status(200).send('IGNORED'); }
+    if (enc) {
+      console.log('[WEBHOOK enc head]', enc.length, 'head:', enc.slice(0,100), 'tail:', enc.slice(-100));
+    }
+    if (!enc) { 
+      console.warn('[WEBHOOK] 缺 Period'); 
+      return res.status(200).send('IGNORED'); 
+    }
 
     const eventHash = crypto.createHash('sha256').update(enc).digest('hex');
     await supabase.from('webhook_events').upsert([{
