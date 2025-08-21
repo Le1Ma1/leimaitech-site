@@ -23,8 +23,6 @@ const PERIOD_ENDPOINT = `${NEWEBPAY_BASE}/MPG/period`;
 
 const MAIN_KEY = process.env.HASH_KEY || '';
 const MAIN_IV  = process.env.HASH_IV || '';
-const TEST_KEY = process.env.TEST_HASH_KEY || '';
-const TEST_IV  = process.env.TEST_HASH_IV  || '';
 
 const BOT_TIMEOUT_MS = Number(process.env.BOT_TIMEOUT_MS || 4000);
 const GRACE_DAYS = Number(process.env.GRACE_DAYS || 3);
