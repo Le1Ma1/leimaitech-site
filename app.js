@@ -11,8 +11,23 @@ const supabase = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const NEWEBPAY_BASE = process.env.NEWEBPAY_BASE || 'https://ccore.newebpay.com';
+// ==== 環境與常數 ====
+const RESOLVE_ENV = () => {
+  // 以 NEWEBPAY_BASE 為主，未設則預設 core（避免誤用測試站）
+  const base = process.env.NEWEBPAY_BASE || 'https://core.newebpay.com';
+  const mode = /ccore/.test(base) ? 'test' : 'prod';
+  return { base, mode };
+};
+const { base: NEWEBPAY_BASE, mode: ENV_MODE } = RESOLVE_ENV();
 const PERIOD_ENDPOINT = `${NEWEBPAY_BASE}/MPG/period`;
+
+const MAIN_KEY = process.env.HASH_KEY || '';
+const MAIN_IV  = process.env.HASH_IV || '';
+const TEST_KEY = process.env.TEST_HASH_KEY || '';
+const TEST_IV  = process.env.TEST_HASH_IV  || '';
+
+const BOT_TIMEOUT_MS = Number(process.env.BOT_TIMEOUT_MS || 4000);
+const GRACE_DAYS = Number(process.env.GRACE_DAYS || 3);
 
 // ===== 日誌與 Request ID =====
 app.use((req, res, next) => {
@@ -35,6 +50,9 @@ app.use((req, res, next) => {
   next();
 });
 
+console.log(`[BOOT] NEWEBPAY_BASE=${NEWEBPAY_BASE} (mode=${ENV_MODE})`);
+console.log(`[BOOT] Merchant=${process.env.MERCHANT_ID || '(unset)'} | HASH_KEY set? ${!!MAIN_KEY} | TEST_HASH_KEY set? ${!!TEST_KEY}`);
+
 app.use(cors({
   origin: [
     'https://leimaitech.com',
@@ -45,7 +63,7 @@ app.use(cors({
   ]
 }));
 
-// 只啟用 JSON（供 /api/* 使用）；不要全域掛 urlencoded，避免 webhook/表單衝撞
+// 只啟用 JSON（供 /api/* 使用）；避免全域 urlencoded，免得 webhook 解析衝突
 app.use(bodyParser.json({ limit: '1mb' }));
 
 // 靜態檔 + .html fallback（專案根目錄）
@@ -55,55 +73,9 @@ app.use(express.static(path.join(__dirname), { extensions: ['html'] }));
 function addDays(d, days){ const x=new Date(d.getTime()); x.setDate(x.getDate()+days); return x; }
 function yyyymmdd(date){ const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0'); return `${y}-${m}-${d}`; }
 
-function aesDecryptSmart(input, key, iv){
-  if (!input) throw new Error('empty enc');
-  const enc = decodeURIComponent(String(input));
-  const isHex = /^[0-9a-fA-F]+$/.test(enc) && enc.length % 2 === 0;
-
-  const tryWith = (fmt) => {
-    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key,'utf8'), Buffer.from(iv,'utf8'));
-    decipher.setAutoPadding(true);
-    let out = decipher.update(enc, fmt, 'utf8');
-    out += decipher.final('utf8');
-    return out;
-  };
-
-  try {
-    return isHex ? tryWith('hex') : tryWith('base64');
-  } catch {
-    try {
-      return isHex ? tryWith('base64') : tryWith('hex');
-    } catch (e2) {
-      throw e2;
-    }
-  }
-}
-
 const isLineUserId = s => typeof s === 'string' && /^U[a-f0-9]{32}$/i.test(s);
 const sha256U = s => crypto.createHash('sha256').update(s).digest('hex').toUpperCase();
 
-// 解析 multipart/form-data（只處理純文字欄位）
-function parseMultipart(rawText, contentType) {
-  const m = /boundary="?([^";]+)"?/i.exec(contentType || '');
-  if (!m) return {};
-  const boundary = `--${m[1]}`;
-  const parts = rawText.split(boundary);
-  const out = {};
-  for (const p of parts) {
-    const nameMatch = /name="([^"]+)"/i.exec(p);
-    if (!nameMatch) continue;
-    const name = nameMatch[1];
-    const idx = p.indexOf('\r\n\r\n');
-    if (idx === -1) continue;
-    let val = p.slice(idx + 4);
-    val = val.replace(/\r\n--\s*$/,'').trim();
-    out[name] = val;
-  }
-  return out;
-}
-
-// ===== BOT 介接（供 webhook / cron 用）=====
-const GRACE_DAYS = Number(process.env.GRACE_DAYS || 3);
 function hmac(body){
   return crypto.createHmac('sha256', process.env.BOT_SECRET || '')
                .update(body).digest('hex');
@@ -119,9 +91,58 @@ async function callBot(url, payload, idemKey){
       'X-Idempotency-Key': idemKey || payload.order_no || payload.user_id
     },
     body,
-    signal: AbortSignal.timeout(Number(process.env.BOT_TIMEOUT_MS || 4000))
+    signal: AbortSignal.timeout(BOT_TIMEOUT_MS)
   });
   return res.ok;
+}
+
+// 解析 multipart/form-data（只處理純文字欄位，精準去尾端 CRLF）
+function parseMultipart(rawText, contentType) {
+  const m = /boundary="?([^";]+)"?/i.exec(contentType || '');
+  if (!m) return {};
+  const boundary = `--${m[1]}`;
+  const chunks = rawText.split(boundary);
+  const out = {};
+  for (const chunk of chunks) {
+    // 每段格式大致為 \r\nHeader...\r\n\r\nVALUE\r\n
+    if (!/Content-Disposition/i.test(chunk)) continue;
+    const nameMatch = /name="([^"]+)"/i.exec(chunk);
+    if (!nameMatch) continue;
+    const name = nameMatch[1];
+    const idx = chunk.indexOf('\r\n\r\n');
+    if (idx === -1) continue;
+    const body = chunk.slice(idx + 4);
+    const endIdx = body.lastIndexOf('\r\n');
+    const val = (endIdx >= 0 ? body.slice(0, endIdx) : body);
+    out[name] = val;
+  }
+  return out;
+}
+
+// AES 解密：同時嘗試 (hex/base64) × (key/iv: utf8/hex)
+function aesTryAll(enc, key, iv) {
+  const formats = ['hex', 'base64'];
+  const keyFormats = ['utf8', 'hex'];
+
+  const encLooksHex = /^[0-9a-fA-F]+$/.test(enc) && enc.length % 2 === 0;
+
+  for (const encFmt of (encLooksHex ? ['hex','base64'] : ['base64','hex'])) {
+    for (const kFmt of keyFormats) {
+      for (const iFmt of keyFormats) {
+        try {
+          const kBuf = Buffer.from(key, kFmt);
+          const iBuf = Buffer.from(iv,  iFmt);
+          if (kBuf.length !== 32 || iBuf.length !== 16) continue; // 長度不對直接略過
+          const decipher = crypto.createDecipheriv('aes-256-cbc', kBuf, iBuf);
+          decipher.setAutoPadding(true);
+          let out = decipher.update(enc, encFmt, 'utf8');
+          out += decipher.final('utf8');
+          return { ok:true, text: out, encFmt, kFmt, iFmt };
+        } catch {}
+      }
+    }
+  }
+  return { ok:false };
 }
 
 // ===== 顯式對應頁 =====
@@ -211,7 +232,7 @@ app.post('/api/subscribe', async (req, res) => {
   }catch(e){ console.error('[SUBSCRIBE] error', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-// ===== 產生定期定額表單（隱收件人；只顯示付款人）=====
+// ===== 產生定期定額表單 =====
 app.get('/pay', async (req, res) => {
   try{
     const { order_no } = req.query;
@@ -244,7 +265,7 @@ app.get('/pay', async (req, res) => {
       ReturnURL: `${process.env.RETURN_URL_BASE || 'https://leimaitech.com'}/payment-result.html?order_no=${order_no}`
     };
 
-    const key = process.env.HASH_KEY, iv = process.env.HASH_IV;
+    const key = MAIN_KEY, iv = MAIN_IV;
     const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(key,'utf8'), Buffer.from(iv,'utf8'));
     let postDataEnc = cipher.update(qs.stringify(periodInfoObj), 'utf8', 'hex'); postDataEnc += cipher.final('hex');
 
@@ -288,7 +309,8 @@ app.post(
         payload = qs.parse(rawText);
       }
 
-      console.log('[WEBHOOK] ct=', ct, 'rawLen=', rawText.length, 'keys=', Object.keys(payload));
+      const keys = Object.keys(payload);
+      console.log('[WEBHOOK] ct=', ct, 'rawLen=', rawText.length, 'keys=', keys);
 
       const enc = payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '';
       if (!enc) {
@@ -296,6 +318,7 @@ app.post(
         return res.status(200).send('IGNORED');
       }
 
+      // 去重：用 enc 做 hash
       const eventHash = crypto.createHash('sha256').update(enc).digest('hex');
       await supabase.from('webhook_events').upsert([{
         event_source: 'newebpay_period',
@@ -304,32 +327,60 @@ app.post(
         processed: false
       }], { onConflict: 'event_hash' });
 
-      const key = process.env.HASH_KEY, iv = process.env.HASH_IV;
+      // 嘗試用主組解
+      let usedEnv = 'prod';
+      let d = aesTryAll(enc, MAIN_KEY, MAIN_IV);
 
-      const providedSha = payload.TradeSha || payload.TradeSHA || '';
-      if (providedSha) {
-        const candidates = [
-          `HashKey=${key}&${enc}&HashIV=${iv}`,
-          `HashKey=${key}&PostData_=${enc}&HashIV=${iv}`,
-          `HashKey=${key}&TradeInfo=${enc}&HashIV=${iv}`,
-          `HashKey=${key}&Period=${enc}&HashIV=${iv}`
-        ];
-        const ok = candidates.some(s => sha256U(s) === providedSha);
-        if (!ok) { console.warn('[WEBHOOK] SHA mismatch'); return res.status(200).send('IGNORED'); }
+      // 主組失敗，再嘗試測試組（若有提供）
+      if (!d.ok && TEST_KEY && TEST_IV) {
+        const dTest = aesTryAll(enc, TEST_KEY, TEST_IV);
+        if (dTest.ok) {
+          usedEnv = 'test';
+          d = dTest;
+          console.warn('[WEBHOOK] 解密使用 TEST_HASH_KEY/TEST_HASH_IV 成功，請檢查 NEWEBPAY_BASE 與金鑰組是否一致（你可能把請款送到 ccore，但伺服器用的是正式金鑰，或反之）。');
+        }
       }
 
-      let decodedText = '';
-      try {
-        decodedText = aesDecryptSmart(enc, key, iv);
-      } catch (e) {
+      if (!d.ok) {
         console.warn('[WEBHOOK] decrypt failed');
-        await supabase.from('webhook_events').update({ payload: { is_hex: /^[0-9a-fA-F]+$/.test(enc), sample: enc.slice(0,64) } }).eq('event_hash', eventHash);
+        await supabase.from('webhook_events')
+          .update({
+            payload: {
+              decrypt_env: 'fail',
+              enc_is_hex: /^[0-9a-fA-F]+$/.test(enc),
+              enc_len: enc.length,
+              sample: enc.slice(0, 64)
+            }
+          })
+          .eq('event_hash', eventHash);
         return res.status(200).send('IGNORED');
       }
 
+      const decodedText = d.text;
       let result; try { result = JSON.parse(decodedText); } catch { result = qs.parse(decodedText); }
-      console.log('[WEBHOOK] decoded:', result);
-      await supabase.from('webhook_events').update({ payload: result }).eq('event_hash', eventHash);
+      console.log('[WEBHOOK] decoded by', { usedEnv, encFmt: d.encFmt, kFmt: d.kFmt, iFmt: d.iFmt }, '=>', result);
+
+      // 簽章驗證（有才驗），使用成功解密所用之 key/iv
+      const providedSha = payload.TradeSha || payload.TradeSHA || '';
+      if (providedSha) {
+        const keyToUse = usedEnv === 'test' ? TEST_KEY : MAIN_KEY;
+        const ivToUse  = usedEnv === 'test' ? TEST_IV  : MAIN_IV;
+        const candidates = [
+          `HashKey=${keyToUse}&${enc}&HashIV=${ivToUse}`,
+          `HashKey=${keyToUse}&PostData_=${enc}&HashIV=${ivToUse}`,
+          `HashKey=${keyToUse}&TradeInfo=${enc}&HashIV=${ivToUse}`,
+          `HashKey=${keyToUse}&Period=${enc}&HashIV=${ivToUse}`
+        ];
+        const pass = candidates.some(s => sha256U(s) === providedSha);
+        if (!pass) {
+          console.warn('[WEBHOOK] SHA mismatch (env used:', usedEnv, ')');
+          // 不中斷流程，但標記
+        }
+      }
+
+      await supabase.from('webhook_events')
+        .update({ payload: { ...result, decrypt_env: usedEnv } })
+        .eq('event_hash', eventHash);
 
       const merOrderNo =
         result?.MerOrderNo || result?.MerchantOrderNo ||
@@ -412,7 +463,7 @@ app.post(
       return res.status(200).send('OK');
     } catch (e) {
       console.error('[WEBHOOK] error', e);
-      return res.status(200).send('IGNORED');
+      return res.status(200).send('IGNORED'); // 避免重送風暴
     }
   }
 );
