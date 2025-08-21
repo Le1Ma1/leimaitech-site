@@ -122,15 +122,25 @@ function aesDecrypt(enc) {
   const v = Buffer.from(HASH_IV , 'utf8');
   if (k.length !== 32 || v.length !== 16) throw new Error('bad key/iv length');
 
-  const decipher = crypto.createDecipheriv('aes-256-cbc', k, v);
-  decipher.setAutoPadding(true);
+  const tryFmt = (fmt) => {
+    const decipher = crypto.createDecipheriv('aes-256-cbc', k, v);
+    decipher.setAutoPadding(true);
+    let buf = Buffer.concat([
+      decipher.update(Buffer.from(enc, fmt)),
+      decipher.final()
+    ]);
+    return buf.toString('utf8');
+  };
 
-  let decoded = Buffer.concat([
-    decipher.update(Buffer.from(enc, 'hex')),
-    decipher.final()
-  ]);
-
-  return { ok:true, text: decoded.toString('utf8'), fmt:'hex' };
+  try {
+    return { ok:true, text: tryFmt('hex'), fmt:'hex' };
+  } catch {
+    try {
+      return { ok:true, text: tryFmt('base64'), fmt:'base64' };
+    } catch {
+      return { ok:false };
+    }
+  }
 }
 
 /* ===== 顯式頁面 ===== */
