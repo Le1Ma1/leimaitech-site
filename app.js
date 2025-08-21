@@ -12,18 +12,20 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 /* =========================
-   環境與常數（正式環境）
+   僅正式站（core.newebpay.com）
    ========================= */
-const NEWEBPAY_BASE = (process.env.NEWEBPAY_BASE || 'https://core.newebpay.com').trim();
+const NEWEBPAY_BASE = process.env.NEWEBPAY_BASE || 'https://core.newebpay.com';
 const PERIOD_ENDPOINT = `${NEWEBPAY_BASE}/MPG/period`;
 
+/* ===== 正式金鑰（去除不可見字元）===== */
 const HASH_KEY = (process.env.HASH_KEY || '').trim();
 const HASH_IV  = (process.env.HASH_IV  || '').trim();
 
+/* ===== 其他設定 ===== */
 const BOT_TIMEOUT_MS = Number(process.env.BOT_TIMEOUT_MS || 4000);
 const GRACE_DAYS     = Number(process.env.GRACE_DAYS || 3);
 
-/* ===== 日誌與 Request ID ===== */
+/* ===== 啟動自檢 ===== */
 app.use((req, res, next) => {
   req.requestId = req.headers['x-request-id'] || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
   res.setHeader('X-Request-Id', req.requestId);
@@ -44,12 +46,21 @@ app.use((req, res, next) => {
   next();
 });
 
-// 啟動時做一次基本檢查（不輸出敏感值）
-const keyLen = Buffer.from(HASH_KEY, 'utf8').length;
-const ivLen  = Buffer.from(HASH_IV,  'utf8').length;
-console.log(`[BOOT] NEWEBPAY_BASE=${NEWEBPAY_BASE}`);
-console.log(`[BOOT] Merchant=${process.env.MERCHANT_ID || '(unset)'} | HASH_KEY len=${keyLen} | HASH_IV len=${ivLen}`);
+(function bootCheck(){
+  const keyLen = Buffer.from(HASH_KEY, 'utf8').length;
+  const ivLen  = Buffer.from(HASH_IV,  'utf8').length;
+  console.log(`[BOOT] NEWEBPAY_BASE=${NEWEBPAY_BASE}`);
+  console.log(`[BOOT] MERCHANT_ID=${process.env.MERCHANT_ID || '(unset)'}`);
+  console.log(`[BOOT] HASH_KEY bytes=${keyLen}, HASH_IV bytes=${ivLen}`);
+  if (NEWEBPAY_BASE.indexOf('core.newebpay.com') === -1) {
+    console.warn('[BOOT] 警告：NEWEBPAY_BASE 非正式站（應為 https://core.newebpay.com）');
+  }
+  if (keyLen !== 32 || ivLen !== 16) {
+    console.error('[BOOT] 金鑰長度不正確（AES-256-CBC 要求 key=32 bytes, iv=16 bytes）。請重新複製貼上金鑰/IV，避免不可見字元。');
+  }
+})();
 
+/* ===== CORS / Body Parsers ===== */
 app.use(cors({
   origin: [
     'https://leimaitech.com',
@@ -59,21 +70,18 @@ app.use(cors({
     'http://127.0.0.1:3000'
   ]
 }));
-
-// 只啟用 JSON（供 /api/* 使用）；避免全域 urlencoded，免得 webhook 解析衝突
+// 只給 /api/* 用 JSON；不要全域 urlencoded，避免 webhook 解析衝突
 app.use(bodyParser.json({ limit: '1mb' }));
 
-// 靜態檔 + .html fallback（專案根目錄）
+/* ===== 靜態頁 ===== */
 app.use(express.static(path.join(__dirname), { extensions: ['html'] }));
 
-/* ============ 小工具 ============ */
-function addDays(d, days){ const x=new Date(d.getTime()); x.setDate(x.getDate()+days); return x; }
-function yyyymmdd(date){ const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0'); return `${y}-${m}-${d}`; }
-
+/* ===== 工具 ===== */
 const isLineUserId = s => typeof s === 'string' && /^U[a-f0-9]{32}$/i.test(s);
 const sha256U = s => crypto.createHash('sha256').update(s).digest('hex').toUpperCase();
+const addDays = (d, days)=>{ const x=new Date(d.getTime()); x.setDate(x.getDate()+days); return x; };
+const yyyymmdd = d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
-// 呼叫 Bot（可不設 URL）
 function hmac(body){
   return crypto.createHmac('sha256', process.env.BOT_SECRET || '').update(body).digest('hex');
 }
@@ -93,7 +101,7 @@ async function callBot(url, payload, idemKey){
   return res.ok;
 }
 
-// 解析 multipart/form-data（只處理純文字欄位，嚴格去除尾端 CRLF）
+/* ===== 解析 multipart/form-data（只取純文字欄位，不多做 trim）===== */
 function parseMultipart(rawText, contentType) {
   const m = /boundary="?([^";]+)"?/i.exec(contentType || '');
   if (!m) return {};
@@ -108,43 +116,38 @@ function parseMultipart(rawText, contentType) {
     const idx = chunk.indexOf('\r\n\r\n');
     if (idx === -1) continue;
     const body = chunk.slice(idx + 4);
+    // 去掉這一 part 尾端的 CRLF（不做 .trim() 以免吃到合法字元）
     const endIdx = body.lastIndexOf('\r\n');
-    const val = (endIdx >= 0 ? body.slice(0, endIdx) : body);
-    out[name] = val;
+    out[name] = (endIdx >= 0 ? body.slice(0, endIdx) : body);
   }
   return out;
 }
 
-// AES 解密（優先 hex，備援 base64；Key/IV 一律以 UTF-8）
-function aesDecrypt(enc) {
-  if (!enc) throw new Error('empty enc');
-  const candidates = [String(enc), (()=>{ try{return decodeURIComponent(String(enc))}catch{return String(enc) } })()];
-  const tryOnce = (cipherText, inputFmt) => {
-    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(HASH_KEY,'utf8'), Buffer.from(HASH_IV,'utf8'));
-    decipher.setAutoPadding(true);
-    let out = decipher.update(cipherText, inputFmt, 'utf8');
-    out += decipher.final('utf8');
+/* ===== AES 解密（嘗試 hex 與 base64）===== */
+function aesDecryptPeriod(enc, key, iv) {
+  const tryOnce = (encFmt) => {
+    const cipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key,'utf8'), Buffer.from(iv,'utf8'));
+    cipher.setAutoPadding(true);
+    let out = cipher.update(enc, encFmt, 'utf8');
+    out += cipher.final('utf8');
     return out;
   };
-  // 判斷像不像 hex，否則先 base64
-  for (const candidate of candidates) {
-    const looksHex = /^[0-9a-fA-F]+$/.test(candidate) && candidate.length % 2 === 0;
-    const order = looksHex ? ['hex','base64'] : ['base64','hex'];
-    for (const fmt of order) {
-      try { return { ok:true, text: tryOnce(candidate, fmt), encFmt: fmt, used: candidate !== enc ? 'url-decoded' : 'raw' }; }
-      catch {}
-    }
+  // 先依樣貌判斷，再互換嘗試
+  const looksHex = /^[0-9a-fA-F]+$/.test(enc) && enc.length % 2 === 0;
+  const order = looksHex ? ['hex','base64'] : ['base64','hex'];
+  for (const fmt of order) {
+    try { return { ok:true, text: tryOnce(fmt), fmt }; } catch {}
   }
   return { ok:false };
 }
 
-/* ============ 顯式對應頁 ============ */
+/* ===== 顯式路由（對應靜態頁）===== */
 const send = p => (req, res) => res.sendFile(path.join(__dirname, p));
 app.get(['/subscribe', '/subscribe/'], send('subscribe.html'));
 app.get(['/payment-result', '/payment-result/', '/payment-result.html'], send('payment-result.html'));
 app.get(['/crypto-linebot', '/crypto-linebot/'], send('crypto-linebot/index.html'));
 
-// 結果頁：POST（藍新回跳）→ 303 帶上 ?order_no
+/* ===== 藍新前景回跳：POST → 303 帶上 ?order_no ===== */
 app.post(
   ['/payment-result', '/payment-result.html'],
   express.urlencoded({ extended: false, limit: '1mb' }),
@@ -161,7 +164,7 @@ app.post(
   }
 );
 
-/* ============ 使用者註冊 ============ */
+/* ===== 使用者註冊 ===== */
 app.post('/api/register', async (req, res) => {
   try{
     const { userId, displayName, email, phone } = req.body || {};
@@ -172,9 +175,7 @@ app.post('/api/register', async (req, res) => {
     if (selErr) return res.status(500).json({ error: 'db_select_user' });
 
     if (!existed) {
-      const { error: insErr } = await supabase.from('users').insert([{
-        id:userId, display_name:displayName||null, email:email||null, phone:phone||null
-      }]);
+      const { error: insErr } = await supabase.from('users').insert([{ id:userId, display_name:displayName||null, email:email||null, phone:phone||null }]);
       if (insErr) return res.status(500).json({ error: 'db_insert_user' });
       console.log(`[REGISTER] 新增用戶: ${userId}`);
     } else {
@@ -184,7 +185,7 @@ app.post('/api/register', async (req, res) => {
   }catch(e){ console.error('[REGISTER] error', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-/* ============ 建單（支持月/年） ============ */
+/* ===== 建單（支持月/年）===== */
 app.post('/api/subscribe', async (req, res) => {
   try{
     const { userId, plan='pro', period='month', email } = req.body || {};
@@ -225,9 +226,7 @@ app.post('/api/subscribe', async (req, res) => {
   }catch(e){ console.error('[SUBSCRIBE] error', e); res.status(500).json({ error: 'Server error' }); }
 });
 
-/* ============ 產生定期定額表單（建立委託 NPA‑B05） ============ */
-/* 依官方文件：建立委託 Version=1.5，回傳會以 Period 欄位承載 AES256 CBC 的結果。    */
-/* 手冊：4.3.1 請求參數、Version=1.5；Step4 回傳 Period 為加密字串。                     */
+/* ===== 產生定期定額表單 ===== */
 app.get('/pay', async (req, res) => {
   try{
     const { order_no } = req.query;
@@ -243,24 +242,23 @@ app.get('/pay', async (req, res) => {
     const periodInfoObj = {
       RespondType: 'JSON',
       TimeStamp,
-      Version: '1.5',                 // 建立委託為 1.5（官方手冊 4.3.1）。:contentReference[oaicite:2]{index=2}
+      Version: '1.5',
       LangType: 'zh-Tw',
       MerOrderNo: order_no,
       ProdDesc: 'Leimaitech Pro Subscription',
       PeriodAmt: order.amount,
       PeriodType: order.period_type,
       PeriodPoint: order.period_point,
-      PeriodStartType: '1',           // 1=十元授權、2=立即以委託金額授權、3=不檢查。:contentReference[oaicite:3]{index=3}
+      PeriodStartType: '1',
       PeriodTimes: 99,
       PayerEmail: order.email || 'test@example.com',
       EmailModify: 1,
       PaymentInfo: 'N',
       OrderInfo: 'N',
-      NotifyURL: process.env.PERIOD_NOTIFY_URL,  // 建議設為 https://api.leimaitech.com/api/period-webhook
-      ReturnURL: `${(process.env.RETURN_URL_BASE || 'https://api.leimaitech.com').replace(/\/+$/,'')}/payment-result.html?order_no=${order_no}`
+      NotifyURL: process.env.PERIOD_NOTIFY_URL,
+      ReturnURL: `${process.env.RETURN_URL_BASE || 'https://leimaitech.com'}/payment-result.html?order_no=${order_no}`
     };
 
-    // 依手冊：PostData_ = AES-256-CBC(UTF-8 Key/IV) → 輸出 hex。:contentReference[oaicite:4]{index=4}
     const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(HASH_KEY,'utf8'), Buffer.from(HASH_IV,'utf8'));
     let postDataEnc = cipher.update(qs.stringify(periodInfoObj), 'utf8', 'hex');
     postDataEnc += cipher.final('hex');
@@ -276,7 +274,7 @@ app.get('/pay', async (req, res) => {
   }catch(e){ console.error('[PERIOD PAY] error', e); res.status(500).send('Server error'); }
 });
 
-/* ============ 訂單狀態查詢（禁快取） ============ */
+/* ===== 訂單狀態查詢（禁快取）===== */
 app.get('/api/order-status', async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   const { order_no } = req.query;
@@ -286,31 +284,31 @@ app.get('/api/order-status', async (req, res) => {
   res.json({ status: order.status, order });
 });
 
-/* ============ 定期定額 Webhook（支援 x-www-form-urlencoded / multipart/form-data） ============ */
+/* ===== 定期定額 Webhook ===== */
 app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), async (req, res) => {
   const ct = req.headers['content-type'] || '';
   const rawText = typeof req.body === 'string' ? req.body : '';
   try {
     let payload = {};
     if (ct.startsWith('application/x-www-form-urlencoded')) {
-      payload = qs.parse(rawText);
+      payload = qs.parse(rawText); // 注意：若為 base64 會有 '+'，qs 會正確保留
     } else if (ct.startsWith('multipart/form-data')) {
       payload = parseMultipart(rawText, ct);
     } else if (ct.startsWith('application/json')) {
       try { payload = JSON.parse(rawText); } catch { payload = {}; }
     } else {
-      payload = qs.parse(rawText); // 盡量兼容
+      payload = qs.parse(rawText);
     }
 
     const enc = payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '';
     console.log('[WEBHOOK]', { ct, rawLen: rawText.length, keys: Object.keys(payload), hasEnc: !!enc });
 
     if (!enc) {
-      console.warn('[WEBHOOK] 缺 enc');
+      console.warn('[WEBHOOK] 缺 Period/TradeInfo');
       return res.status(200).send('IGNORED');
     }
 
-    // 事件去重：用 enc 內容做 hash
+    // 去重：以密文建立 hash
     const eventHash = crypto.createHash('sha256').update(enc).digest('hex');
     await supabase.from('webhook_events').upsert([{
       event_source: 'newebpay_period',
@@ -319,21 +317,7 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
       processed: false
     }], { onConflict: 'event_hash' });
 
-    // 解密（hex/base64；UTF-8 key/iv）
-    const d = aesDecrypt(enc);
-    if (!d.ok) {
-      console.warn('[WEBHOOK] decrypt failed');
-      await supabase.from('webhook_events').update({
-        payload: { decrypt_env: 'prod', enc_is_hex: /^[0-9a-fA-F]+$/.test(String(enc)), enc_len: String(enc).length, sample: String(enc).slice(0,64) }
-      }).eq('event_hash', eventHash);
-      return res.status(200).send('IGNORED'); // 避免重送風暴
-    }
-
-    const decodedText = d.text;
-    let result; try { result = JSON.parse(decodedText); } catch { result = qs.parse(decodedText); }
-    console.log('[WEBHOOK] decoded', { encFmt: d.encFmt, input: d.used }, result);
-
-    // 若有提供簽章則驗證（Period 的 webhook 未必都有）
+    // 驗章（若有）
     const providedSha = payload.TradeSha || payload.TradeSHA || '';
     if (providedSha) {
       const candidates = [
@@ -346,7 +330,26 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
       if (!pass) console.warn('[WEBHOOK] SHA mismatch');
     }
 
-    await supabase.from('webhook_events').update({ payload: result, processed: true }).eq('event_hash', eventHash);
+    // 解密
+    const d = aesDecryptPeriod(enc, HASH_KEY, HASH_IV);
+    if (!d.ok) {
+      console.warn('[WEBHOOK] decrypt failed');
+      await supabase.from('webhook_events').update({
+        payload: {
+          decrypt_env: 'prod',
+          enc_is_hex: /^[0-9a-fA-F]+$/.test(enc),
+          enc_len: enc.length,
+          head32: enc.slice(0, 32),
+          tail32: enc.slice(-32)
+        }
+      }).eq('event_hash', eventHash);
+      return res.status(200).send('IGNORED');
+    }
+
+    let result; try { result = JSON.parse(d.text); } catch { result = qs.parse(d.text); }
+    console.log('[WEBHOOK] decoded ok (fmt=' + d.fmt + ') =>', result);
+
+    await supabase.from('webhook_events').update({ payload: result }).eq('event_hash', eventHash);
 
     const merOrderNo =
       result?.MerOrderNo || result?.MerchantOrderNo ||
@@ -425,6 +428,7 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
       console.log(`[WEBHOOK] FAIL ${merOrderNo}`);
     }
 
+    await supabase.from('webhook_events').update({ processed: true }).eq('event_hash', eventHash);
     return res.status(200).send('OK');
   } catch (e) {
     console.error('[WEBHOOK] error', e);
@@ -432,7 +436,7 @@ app.post('/api/period-webhook', express.text({ type: '*/*', limit: '1mb' }), asy
   }
 });
 
-/* ============ 每日對帳：過期或取消就移除白名單 ============ */
+/* ===== 每日對帳：過期或取消就移除白名單 ===== */
 app.post('/cron/reconcile', async (req, res) => {
   if ((req.query.token || '') !== process.env.CRON_TOKEN) return res.sendStatus(403);
   const now = Date.now(), graceMs = GRACE_DAYS * 86400000;
@@ -460,7 +464,7 @@ app.post('/cron/reconcile', async (req, res) => {
   res.json({ ok: true, checked: (subs || []).length, removed, grace_days: GRACE_DAYS });
 });
 
-// 健康檢查
+/* ===== 健康檢查 ===== */
 app.get('/api/health', (req,res)=>res.json({ ok:true, ts:new Date().toISOString() }));
 
 app.listen(PORT, () => console.log(`Server on :${PORT}`));
