@@ -120,21 +120,11 @@ function parseMultipart(rawText, contentType) {
 function aesDecrypt(enc) {
   const k = Buffer.from(HASH_KEY, 'utf8');
   const v = Buffer.from(HASH_IV , 'utf8');
-  if (k.length !== 32 || v.length !== 16) throw new Error('bad key/iv length');
-
-  const tryFmt = (fmt) => {
-    const d = crypto.createDecipheriv('aes-256-cbc', k, v);
-    d.setAutoPadding(true);
-    let out = d.update(enc, fmt, 'utf8'); out += d.final('utf8');
-    return out;
-  };
-
-  const looksHex = /^[0-9a-fA-F]+$/.test(enc) && enc.length % 2 === 0;
-  const order = looksHex ? ['hex','base64'] : ['base64','hex'];
-  for (const fmt of order) {
-    try { return { ok:true, text: tryFmt(fmt), fmt }; } catch {}
-  }
-  return { ok:false };
+  const d = crypto.createDecipheriv('aes-256-cbc', k, v);
+  d.setAutoPadding(true);
+  let out = d.update(enc, 'hex', 'utf8'); 
+  out += d.final('utf8');
+  return { ok:true, text: out, fmt:'hex' };
 }
 
 /* ===== 顯式頁面 ===== */
