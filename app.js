@@ -120,20 +120,53 @@ function parseMultipart(rawText, contentType) {
 function aesDecrypt(enc) {
   const key = Buffer.from(HASH_KEY, 'utf8');
   const iv  = Buffer.from(HASH_IV , 'utf8');
-  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-  decipher.setAutoPadding(false); // 不要讓 Node 去檢查 PKCS7
-
-  let buf = Buffer.concat([
-    decipher.update(Buffer.from(enc, 'hex')),
-    decipher.final()
-  ]);
-
-  // 去除不可列印的控制字元（或依需求修剪掉最後幾個 padding 字節）
-  while (buf.length && buf[buf.length - 1] < 32) {
-    buf = buf.slice(0, -1);
+  if (key.length !== 32 || iv.length !== 16) {
+    return { ok: false, error: 'bad key/iv length' };
   }
 
-  return buf.toString('utf8');
+  // 判斷密文格式：純 16 進位字串則視為 hex，否則當作 base64
+  const fmt = /^[0-9a-fA-F]+$/.test(enc) ? 'hex' : 'base64';
+  let cipherBuf;
+  try {
+    cipherBuf = Buffer.from(enc, fmt);
+  } catch {
+    return { ok: false, error: 'invalid ' + fmt };
+  }
+
+  // 第一步：嘗試 autoPadding=true（標準 PKCS7）
+  try {
+    const d1 = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    d1.setAutoPadding(true);
+    const out = Buffer.concat([d1.update(cipherBuf), d1.final()]);
+    return { ok: true, text: out.toString('utf8'), fmt: fmt + '/auto' };
+  } catch {
+    // 自動解密失敗，進入 fallback
+  }
+
+  // fallback：autoPadding=false，手動處理 PKCS7 及 0x00/0x14
+  try {
+    const d2 = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    d2.setAutoPadding(false);
+    let buf = Buffer.concat([d2.update(cipherBuf), d2.final()]);
+
+    // 檢查並移除標準 PKCS7 padding
+    const last = buf[buf.length - 1];
+    if (last > 0 && last <= 16) {
+      const padding = buf.slice(-last);
+      if (padding.every(b => b === last)) {
+        buf = buf.slice(0, -last);
+      }
+    }
+
+    // 處理 NewebPay 常見的非標準尾巴 0x00、0x14
+    while (buf.length && (buf[buf.length - 1] === 0x00 || buf[buf.length - 1] === 0x14)) {
+      buf = buf.slice(0, -1);
+    }
+
+    return { ok: true, text: buf.toString('utf8'), fmt: fmt + '/manual' };
+  } catch (err) {
+    return { ok: false, error: 'decrypt error: ' + err.message };
+  }
 }
 
 /* ===== 顯式頁面 ===== */
