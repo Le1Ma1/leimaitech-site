@@ -64,23 +64,34 @@
     // === 若不在 LINE / 取不到 uid，提供一鍵在 LINE 開啟 ===
     const blocker = document.getElementById('blocker');
     const openBtn = document.getElementById('openInLine');
-
+      
+    const btnMonth = document.getElementById('btnMonth');
+    const btnYear = document.getElementById('btnYear');
+    btnMonth.disabled = true;
+    btnYear.disabled = true;
+      
     function setOpenInLineFallback(){
       const isMobile = /iphone|ipad|ipod|android/i.test(navigator.userAgent);
       const here = location.href;
       openBtn.href = isMobile ? `line://app/${LIFF_ID}` : `https://liff.line.me/${LIFF_ID}?redirectUri=${encodeURIComponent(here)}`;
     }
-
+    
     (async function ensureUid(){
       const p = new URLSearchParams(location.search);
       const hasUid = /^U[a-f0-9]{32}$/i.test(p.get('uid') || '');
-      if (hasUid) return;
+      if (hasUid) {
+        btnMonth.disabled = false;
+        btnYear.disabled = false;
+        return;
+      }
       try {
         await liff.init({ liffId: LIFF_ID });
         if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
         const prof = await liff.getProfile();
         if (prof?.userId) {
           p.set('src','line'); p.set('uid', prof.userId);
+          btnMonth.disabled = false;
+          btnYear.disabled = false;
           location.replace(location.pathname + '?' + p.toString());
           return;
         }
