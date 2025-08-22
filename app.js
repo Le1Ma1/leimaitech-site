@@ -401,6 +401,7 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
     const orderNo = r.MerchantOrderNo;
     const periodNo = r.PeriodNo || null;
     const tradeNo  = r.TradeNo   || null;
+    const authCode = r.AuthCode  || null;
     const amount   = Number(r.PeriodAmt || 0);
     const paidAt   = r.AuthTime ? new Date(
       r.AuthTime.replace(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/, '$1-$2-$3T$4:$5:$6Z')
@@ -413,17 +414,14 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
 
     if (orderRow) {
       const { error: updErr } = await supabase.from('orders').update({
-        status: success ? 'active' : 'failed',
+        status: success ? 'paid' : 'failed',
         paid_at: success ? new Date().toISOString() : null,
         newebpay_period_no: periodNo,
-        raw_response: JSON.stringify(result)
+        raw_response: result
       }).eq('order_no', orderNo);
 
-      if (updErr) {
-        console.error('[WEBHOOK] update orders failed:', updErr);
-      } else {
-        console.log('[WEBHOOK] order updated:', orderNo, '->', success ? 'active' : 'failed');
-      }
+      if (updErr) console.error('[WEBHOOK] update orders failed:', updErr);
+      else console.log('[WEBHOOK] order updated:', orderNo, '->', success ? 'paid' : 'failed');
     }
 
     // === 成功才進 subscriptions / transactions ===
@@ -435,10 +433,13 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
         status: 'active',
         plan: orderRow.plan,
         period: orderRow.period,
-        amount: orderRow.amount,
+        period_type: orderRow.period_type,
+        period_point: orderRow.period_point,
+        period_times: orderRow.period_times,
+        current_period_start: new Date().toISOString(),
         current_period_end: nextChargeDate,
-        provider: 'newebpay',
-        provider_period_no: periodNo,
+        gateway: 'newebpay',
+        gateway_period_no: periodNo,
         updated_at: new Date().toISOString()
       }], { onConflict: 'user_id' });
 
@@ -449,13 +450,15 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
       const { error: txErr } = await supabase.from('transactions').insert([{
         user_id: orderRow.user_id,
         order_no: orderNo,
-        trade_no: tradeNo,
+        type: 'initial',
+        status: 'succeeded',
         amount: amount,
         currency: 'TWD',
-        payment_method: r.PaymentMethod || 'CREDIT',
-        status: 'success',
+        gateway_trade_no: tradeNo,
+        gateway_auth_code: authCode,
         paid_at: paidAt.toISOString(),
-        raw_response: JSON.stringify(result)
+        gateway: 'newebpay',
+        raw_payload: result
       }]);
 
       if (txErr) console.error('[WEBHOOK] insert transaction failed:', txErr);

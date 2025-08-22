@@ -5,8 +5,9 @@
   <title>訂閱狀態 - Leimaitech</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      background: #f9fafb;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #111827;
+      color: #f3f4f6;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -14,30 +15,42 @@
       margin: 0;
     }
     .card {
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-      padding: 30px;
-      max-width: 400px;
+      background: #1f2937;
+      border-radius: 16px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+      padding: 40px;
+      max-width: 450px;
       text-align: center;
     }
-    .success { color: #16a34a; }
-    .failed { color: #dc2626; }
-    .pending { color: #ca8a04; }
+    h2 {
+      font-size: 1.8rem;
+      margin-bottom: 15px;
+    }
+    p {
+      font-size: 1rem;
+      color: #d1d5db;
+    }
+    .success { color: #10b981; }
+    .failed { color: #ef4444; }
+    .pending { color: #fbbf24; }
     button {
-      margin-top: 20px;
-      padding: 10px 20px;
+      margin-top: 25px;
+      padding: 12px 24px;
       border: none;
       border-radius: 8px;
-      background: #2563eb;
+      background: #3b82f6;
       color: #fff;
       cursor: pointer;
+      font-size: 1rem;
+    }
+    button:hover {
+      background: #2563eb;
     }
   </style>
 </head>
 <body>
   <div class="card">
-    <h2 id="statusTitle">檢查中...</h2>
+    <h2 id="statusTitle">⌛ 檢查中...</h2>
     <p id="statusMessage">請稍候，我們正在確認您的訂閱授權。</p>
     <button onclick="location.reload()">重新整理</button>
   </div>
@@ -57,7 +70,7 @@
         if (!res.ok) throw new Error("查詢失敗");
         const data = await res.json();
 
-        if (data.status === "active") {
+        if (data.status === "paid") {
           document.getElementById("statusTitle").textContent = "🎉 授權成功";
           document.getElementById("statusTitle").className = "success";
           document.getElementById("statusMessage").textContent = "您的訂閱已啟用，您將立即獲得服務。";
