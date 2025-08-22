@@ -1,44 +1,85 @@
-<!doctype html>
-<html lang="zh-Hant">
+<!DOCTYPE html>
+<html lang="zh-TW">
 <head>
-  <meta charset="utf-8">
-  <title>付款結果 - LeiMai Pro</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="/css/style.css" rel="stylesheet">
+  <meta charset="UTF-8">
+  <title>訂閱狀態 - Leimaitech</title>
   <style>
-    body{background:#070814;color:#fff;font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto}
-    .container{max-width:720px;margin:0 auto;padding:28px}
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9fafb;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      padding: 30px;
+      max-width: 400px;
+      text-align: center;
+    }
+    .success { color: #16a34a; }
+    .failed { color: #dc2626; }
+    .pending { color: #ca8a04; }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      background: #2563eb;
+      color: #fff;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
-  <main class="container">
-    <h1>付款結果</h1>
-    <div id="info"></div>
-    <div>訂單狀態：<span id="status">查詢中...</span></div>
-    <div id="more"></div>
-  </main>
+  <div class="card">
+    <h2 id="statusTitle">檢查中...</h2>
+    <p id="statusMessage">請稍候，我們正在確認您的訂閱授權。</p>
+    <button onclick="location.reload()">重新整理</button>
+  </div>
 
   <script>
-    const orderNo = new URL(location.href).searchParams.get('order_no');
-    document.getElementById('info').textContent = `訂單編號：${orderNo}`;
+    async function checkStatus() {
+      const params = new URLSearchParams(location.search);
+      const orderNo = params.get("order_no");
+      if (!orderNo) {
+        document.getElementById("statusTitle").textContent = "無效的訂單";
+        document.getElementById("statusMessage").textContent = "請重新進行訂閱流程。";
+        return;
+      }
 
-    async function poll() {
       try {
-        const r = await fetch(`/api/order-status?order_no=${encodeURIComponent(orderNo)}`, { cache:'no-store' });
-        if (!r.ok) throw new Error('status fail');
-        const { status, order } = await r.json();
-        document.getElementById('status').textContent = status;
+        const res = await fetch(`/api/order-status?order_no=${orderNo}`);
+        if (!res.ok) throw new Error("查詢失敗");
+        const data = await res.json();
 
-        if (order && status === 'paid') {
-          const t = new Date(order.trial_end);
-          document.getElementById('more').innerHTML =
-            `🎉 委託建立成功，試用至 <b>${t.toLocaleString()}</b>，首扣日期 <b>${order.first_charge_date}</b>。`;
-          return;
+        if (data.status === "active") {
+          document.getElementById("statusTitle").textContent = "🎉 授權成功";
+          document.getElementById("statusTitle").className = "success";
+          document.getElementById("statusMessage").textContent = "您的訂閱已啟用，您將立即獲得服務。";
+        } else if (data.status === "failed") {
+          document.getElementById("statusTitle").textContent = "❌ 授權失敗";
+          document.getElementById("statusTitle").className = "failed";
+          document.getElementById("statusMessage").textContent = "授權失敗或付款遭拒，請重新訂閱。";
+        } else if (data.status === "pending") {
+          document.getElementById("statusTitle").textContent = "⌛ 等待授權";
+          document.getElementById("statusTitle").className = "pending";
+          document.getElementById("statusMessage").textContent = "授權尚未完成，請稍後再試。";
+        } else {
+          document.getElementById("statusTitle").textContent = "📄 狀態：" + (data.status || "未知");
+          document.getElementById("statusMessage").textContent = "如有問題，請聯繫客服。";
         }
-      } catch (e) { console.error('poll error', e); }
-      setTimeout(poll, 2500);
+      } catch (e) {
+        document.getElementById("statusTitle").textContent = "⚠️ 系統錯誤";
+        document.getElementById("statusMessage").textContent = "查詢時發生問題，請稍後再試。";
+      }
     }
-    poll();
+
+    checkStatus();
   </script>
 </body>
 </html>
