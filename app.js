@@ -311,9 +311,34 @@ app.get('/api/order-status', async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   const { order_no } = req.query;
   if (!order_no) return res.status(400).json({ error: 'missing order_no' });
+
+  // 查 order
   const { data: order } = await supabase.from('orders').select('*').eq('order_no', order_no).maybeSingle();
   if (!order) return res.status(404).json({ status: 'not_found' });
-  res.json({ status: order.status, order });
+
+  // 查 subscription
+  const { data: sub } = await supabase.from('subscriptions').select('*').eq('user_id', order.user_id).maybeSingle();
+
+  // 判斷用戶友善狀態
+  let userStatus = '等待付款';
+  if (sub) {
+    switch (sub.status) {
+      case 'trialing': userStatus = '試用中'; break;
+      case 'active':   userStatus = '使用中'; break;
+      case 'past_due': userStatus = '逾期寬限'; break;
+      case 'canceled': userStatus = '已取消'; break;
+      case 'expired':  userStatus = '已過期'; break;
+    }
+  } else if (order.status === 'active') {
+    userStatus = '使用中';
+  }
+
+  res.json({
+    status: order.status,
+    userStatus,   // ✅ 用戶友善的狀態字串
+    order,
+    subscription: sub || null
+  });
 });
 
 /* ===== Webhook：定期定額 Notify ===== */
