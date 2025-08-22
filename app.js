@@ -403,27 +403,31 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
     const tradeNo  = r.TradeNo;
     const amount   = Number(r.PeriodAmt || 0);
     const paidAt   = r.AuthTime ? new Date(
-      r.AuthTime.replace(
-        /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/, 
-        '$1-$2-$3T$4:$5:$6Z'
-      )
+      r.AuthTime.replace(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/, '$1-$2-$3T$4:$5:$6Z')
     ) : new Date();
 
     // === 更新 orders ===
-    let { data: orderRow } = await supabase.from('orders').select('*').eq('order_no', orderNo).maybeSingle();
+    let { data: orderRow, error: selErr } = await supabase.from('orders').select('*').eq('order_no', orderNo).maybeSingle();
+    console.log('[WEBHOOK] order lookup:', { orderNo, orderRow, selErr });
     if (orderRow) {
-      await supabase.from('orders').update({
+      const { error: updErr } = await supabase.from('orders').update({
         status: 'active',
         paid_at: new Date().toISOString(),
         newebpay_period_no: periodNo,
-        raw_response: result
+        raw_response: JSON.stringify(result)   // ⚡ 確保是字串
       }).eq('order_no', orderNo);
+
+      if (updErr) {
+        console.error('[WEBHOOK] update orders failed:', updErr);
+      } else {
+        console.log('[WEBHOOK] order updated:', orderNo);
+      }
     }
 
     // === 建立 / 更新 subscriptions ===
     if (orderRow) {
       const nextChargeDate = (r.DateArray || '').split(',')[0] || null;
-      await supabase.from('subscriptions').upsert([{
+      const { error: subErr } = await supabase.from('subscriptions').upsert([{
         user_id: orderRow.user_id,
         status: 'active',
         plan: orderRow.plan,
@@ -434,11 +438,17 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
         provider_period_no: periodNo,
         updated_at: new Date().toISOString()
       }], { onConflict: 'user_id' });
+
+      if (subErr) {
+        console.error('[WEBHOOK] upsert subscription failed:', subErr);
+      } else {
+        console.log('[WEBHOOK] subscription upserted for', orderRow.user_id);
+      }
     }
 
     // === 建立交易紀錄 ===
     if (orderRow) {
-      await supabase.from('transactions').insert([{
+      const { error: txErr } = await supabase.from('transactions').insert([{
         user_id: orderRow.user_id,
         order_no: orderNo,
         trade_no: tradeNo,
@@ -447,8 +457,14 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
         payment_method: r.PaymentMethod || 'CREDIT',
         status: 'success',
         paid_at: paidAt.toISOString(),
-        raw_response: result
+        raw_response: JSON.stringify(result)
       }]);
+
+      if (txErr) {
+        console.error('[WEBHOOK] insert transaction failed:', txErr);
+      } else {
+        console.log('[WEBHOOK] transaction inserted:', tradeNo);
+      }
     }
 
     // 更新 webhook_events 狀態
