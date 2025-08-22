@@ -380,9 +380,18 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
     }
 
     // 解密成功
-    let result; try { result = JSON.parse(decoded.text); } catch { result = qs.parse(decoded.text); }
+    let cleanText = decoded.text.replace(/[\x00-\x1F]+$/g, ''); // 去掉尾端控制字元
+    let result;
+    try {
+      result = JSON.parse(cleanText);
+    } catch {
+      result = qs.parse(cleanText);
+    }
     console.log('[WEBHOOK] decoded ok (fmt=' + decoded.fmt + ') =>', result);
-    await supabase.from('webhook_events').update({ payload: { ...result, decrypt_ok:true } }).eq('event_hash', eventHash);
+
+    await supabase.from('webhook_events').update({
+      payload: { ...result, decrypt_ok: true }
+    }).eq('event_hash', eventHash);
 
     return res.status(200).send('OK');
   } catch (e) {
