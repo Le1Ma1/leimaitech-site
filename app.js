@@ -118,19 +118,22 @@ function parseMultipart(rawText, contentType) {
 
 /* AES 解密 */
 function aesDecrypt(enc) {
-  const k = Buffer.from(HASH_KEY, 'utf8');
-  const v = Buffer.from(HASH_IV , 'utf8');
-  if (k.length !== 32 || v.length !== 16) throw new Error('bad key/iv length');
+  const key = Buffer.from(HASH_KEY, 'utf8');
+  const iv  = Buffer.from(HASH_IV , 'utf8');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+  decipher.setAutoPadding(false); // 不要讓 Node 去檢查 PKCS7
 
-  const decipher = crypto.createDecipheriv('aes-256-cbc', k, v);
-  decipher.setAutoPadding(true);
-
-  let decoded = Buffer.concat([
+  let buf = Buffer.concat([
     decipher.update(Buffer.from(enc, 'hex')),
     decipher.final()
   ]);
 
-  return { ok:true, text: decoded.toString('utf8'), fmt:'hex' };
+  // 去除不可列印的控制字元（或依需求修剪掉最後幾個 padding 字節）
+  while (buf.length && buf[buf.length - 1] < 32) {
+    buf = buf.slice(0, -1);
+  }
+
+  return buf.toString('utf8');
 }
 
 /* ===== 顯式頁面 ===== */
