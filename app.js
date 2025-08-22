@@ -281,9 +281,9 @@ app.get('/api/order-status', async (req, res) => {
 });
 
 /* ===== Webhook：定期定額 Notify ===== */
-app.post('/api/period-webhook', express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {
+app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) => {
   const ct = req.headers['content-type'] || '';
-  const rawText = typeof req.body === 'string' ? req.body : '';
+  const rawText = req.body instanceof Buffer ? req.body.toString('utf8') : '';
   try {
     let payload = {};
     if (ct.startsWith('application/x-www-form-urlencoded')) {
