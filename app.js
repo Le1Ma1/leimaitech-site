@@ -324,12 +324,12 @@ app.get('/api/order-status', async (req, res) => {
   if (sub) {
     switch (sub.status) {
       case 'trialing': userStatus = '試用中'; break;
-      case 'active':   userStatus = '使用中'; break;
+      case 'paid':   userStatus = '使用中'; break;
       case 'past_due': userStatus = '逾期寬限'; break;
       case 'canceled': userStatus = '已取消'; break;
       case 'expired':  userStatus = '已過期'; break;
     }
-  } else if (order.status === 'active') {
+  } else if (order.status === 'paid') {
     userStatus = '使用中';
   }
 
@@ -409,8 +409,8 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
     const success  = result?.Status === 'SUCCESS' && r.RespondCode === '00';
 
     // === 更新 orders ===
-    let { data: orderRow, error: selErr } = await supabase.from('orders').select('*').eq('order_no', orderNo).maybeSingle();
-    console.log('[WEBHOOK] order lookup:', { orderNo, orderRow, selErr });
+    let { data: orderRow } = await supabase.from('orders').select('*').eq('order_no', orderNo).maybeSingle();
+    console.log('[WEBHOOK] order lookup:', { orderNo, orderRow });
 
     if (orderRow) {
       const { error: updErr } = await supabase.from('orders').update({
@@ -424,29 +424,31 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
       else console.log('[WEBHOOK] order updated:', orderNo, '->', success ? 'paid' : 'failed');
     }
 
-    // === 成功才進 subscriptions / transactions ===
+    // === 成功才進 subscriptions / transactions / whitelist ===
     if (success && orderRow) {
-      // 建立 / 更新 subscriptions
       const nextChargeDate = (r.DateArray || '').split(',')[0] || null;
+
+      // upsert subscription
       const { error: subErr } = await supabase.from('subscriptions').upsert([{
         user_id: orderRow.user_id,
-        status: 'active',
         plan: orderRow.plan,
         period: orderRow.period,
+        status: 'active',
+        trial_start: orderRow.trial_start,
+        trial_end: orderRow.trial_end,
+        current_period_start: new Date().toISOString(),
+        current_period_end: nextChargeDate,
         period_type: orderRow.period_type,
         period_point: orderRow.period_point,
         period_times: orderRow.period_times,
-        current_period_start: new Date().toISOString(),
-        current_period_end: nextChargeDate,
         gateway: 'newebpay',
         gateway_period_no: periodNo,
         updated_at: new Date().toISOString()
       }], { onConflict: 'user_id' });
-
       if (subErr) console.error('[WEBHOOK] upsert subscription failed:', subErr);
       else console.log('[WEBHOOK] subscription upserted for', orderRow.user_id);
 
-      // 建立交易紀錄
+      // insert transaction
       const { error: txErr } = await supabase.from('transactions').insert([{
         user_id: orderRow.user_id,
         order_no: orderNo,
@@ -460,12 +462,38 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
         gateway: 'newebpay',
         raw_payload: result
       }]);
-
       if (txErr) console.error('[WEBHOOK] insert transaction failed:', txErr);
       else console.log('[WEBHOOK] transaction inserted:', tradeNo);
+
+      // ✅ 插入 bot_whitelist 前檢查 plan_code 是否存在
+      const { data: planDef } = await supabase.from('subscription_plans')
+        .select('plan_code,tier,period,period_months')
+        .eq('plan_code', orderRow.plan)
+        .maybeSingle();
+
+      if (!planDef) {
+        console.error(`[WEBHOOK] skip whitelist, plan_code not found: ${orderRow.plan}`);
+      } else {
+        const { error: wlErr } = await supabase.from('bot_whitelist').upsert([{
+          user_id: orderRow.user_id,
+          provider: 'line',
+          plan_code: planDef.plan_code,
+          tier: planDef.tier,
+          period: planDef.period,
+          period_months: planDef.period_months,
+          order_no: orderNo,
+          period_no: periodNo,
+          access_until: nextChargeDate,
+          status: 'active',
+          updated_at: new Date().toISOString()
+        }], { onConflict: 'user_id' });
+
+        if (wlErr) console.error('[WEBHOOK] upsert whitelist failed:', wlErr);
+        else console.log('[WEBHOOK] whitelist updated:', orderRow.user_id);
+      }
     }
 
-    // 更新 webhook_events 狀態
+    // update webhook_events
     await supabase.from('webhook_events').update({
       payload: { ...result, decrypt_ok: true },
       processed: true
