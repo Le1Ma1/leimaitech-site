@@ -334,15 +334,12 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
 
     const enc = (payload.Period || payload.period || payload.PostData_ || payload.TradeInfo || '').trim();
     console.log('[WEBHOOK]', { ct, rawLen: rawText.length, keys: Object.keys(payload), hasEnc: !!enc });
-    if (enc) {
-      console.log('[WEBHOOK enc head]', enc.length, 'head:', enc.slice(0,100), 'tail:', enc.slice(-100));
-    }
     if (!enc) { 
       console.warn('[WEBHOOK] 缺 Period'); 
       return res.status(200).send('IGNORED'); 
     }
 
-    // 進 DB：一定存原始密文
+    // 存 webhook event
     const eventHash = crypto.createHash('sha256').update(enc).digest('hex');
     await supabase.from('webhook_events').upsert([{
       event_source: 'newebpay_period',
@@ -353,44 +350,86 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
       payload: { enc_len: enc.length }
     }], { onConflict: 'event_hash' });
 
-    // 驗簽（可選）
-    const providedSha = payload.TradeSha || payload.TradeSHA || '';
-    if (providedSha) {
-      const candidates = [
-        `HashKey=${HASH_KEY}&${enc}&HashIV=${HASH_IV}`,
-        `HashKey=${HASH_KEY}&PostData_=${enc}&HashIV=${HASH_IV}`,
-        `HashKey=${HASH_KEY}&TradeInfo=${enc}&HashIV=${HASH_IV}`,
-        `HashKey=${HASH_KEY}&Period=${enc}&HashIV=${HASH_IV}`
-      ];
-      const pass = candidates.some(s => sha256U(s) === providedSha);
-      if (!pass) console.warn('[WEBHOOK] SHA mismatch');
-    }
-
     // 嘗試解密
     let decoded;
     try {
       decoded = aesDecrypt(enc);
-      if (!decoded.ok) throw new Error('bad decrypt');
+      if (!decoded.ok) throw new Error(decoded.error || 'bad decrypt');
     } catch (e) {
-      console.warn('[WEBHOOK] decrypt failed');
+      console.warn('[WEBHOOK] decrypt failed', e);
       await supabase.from('webhook_events').update({
-        payload: { decrypt_ok:false, enc_is_hex:/^[0-9a-fA-F]+$/.test(enc), enc_len:enc.length }
+        payload: { decrypt_ok:false, enc_len:enc.length }
       }).eq('event_hash', eventHash);
       return res.status(200).send('IGNORED');
     }
 
-    // 解密成功
-    let cleanText = decoded.text.replace(/[\x00-\x1F]+$/g, ''); // 去掉尾端控制字元
+    // 清理字串尾端控制字元
+    let cleanText = decoded.text.replace(/[\x00-\x1F]+$/g, '');
     let result;
-    try {
-      result = JSON.parse(cleanText);
-    } catch {
-      result = qs.parse(cleanText);
-    }
+    try { result = JSON.parse(cleanText); }
+    catch { result = qs.parse(cleanText); }
+
     console.log('[WEBHOOK] decoded ok (fmt=' + decoded.fmt + ') =>', result);
 
+    // === 取出交易資料 ===
+    const r = result?.Result || {};
+    const orderNo = r.MerchantOrderNo;
+    const periodNo = r.PeriodNo;
+    const tradeNo  = r.TradeNo;
+    const amount   = Number(r.PeriodAmt || 0);
+    const paidAt   = r.AuthTime ? new Date(
+      r.AuthTime.replace(
+        /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/, 
+        '$1-$2-$3T$4:$5:$6Z'
+      )
+    ) : new Date();
+
+    // === 更新 orders ===
+    let { data: orderRow } = await supabase.from('orders').select('*').eq('order_no', orderNo).maybeSingle();
+    if (orderRow) {
+      await supabase.from('orders').update({
+        status: 'active',
+        paid_at: new Date().toISOString(),
+        newebpay_period_no: periodNo,
+        raw_response: result
+      }).eq('order_no', orderNo);
+    }
+
+    // === 建立 / 更新 subscriptions ===
+    if (orderRow) {
+      const nextChargeDate = (r.DateArray || '').split(',')[0] || null;
+      await supabase.from('subscriptions').upsert([{
+        user_id: orderRow.user_id,
+        status: 'active',
+        plan: orderRow.plan,
+        period: orderRow.period,
+        amount: orderRow.amount,
+        current_period_end: nextChargeDate,
+        provider: 'newebpay',
+        provider_period_no: periodNo,
+        updated_at: new Date().toISOString()
+      }], { onConflict: 'user_id' });
+    }
+
+    // === 建立交易紀錄 ===
+    if (orderRow) {
+      await supabase.from('transactions').insert([{
+        user_id: orderRow.user_id,
+        order_no: orderNo,
+        trade_no: tradeNo,
+        amount: amount,
+        currency: 'TWD',
+        payment_method: r.PaymentMethod || 'CREDIT',
+        status: 'success',
+        paid_at: paidAt.toISOString(),
+        raw_response: result
+      }]);
+    }
+
+    // 更新 webhook_events 狀態
     await supabase.from('webhook_events').update({
-      payload: { ...result, decrypt_ok: true }
+      payload: { ...result, decrypt_ok: true },
+      processed: true
     }).eq('event_hash', eventHash);
 
     return res.status(200).send('OK');
