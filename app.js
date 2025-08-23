@@ -536,9 +536,9 @@ app.post('/api/cancel-subscription', async (req, res) => {
       RespondType: 'JSON',
       Version: '1.0',
       TimeStamp: Math.floor(Date.now()/1000),
-      MerOrderNo: `cancel_${Date.now()}`, // 商店端自定取消單號
+      MerOrderNo: `cancel_${Date.now()}`,
       PeriodNo: sub.gateway_period_no,
-      AlterType: 'terminate' // 終止
+      AlterType: 'terminate'
     };
     const enc = aesEncrypt(payload, process.env.HASH_KEY, process.env.HASH_IV);
 
@@ -575,14 +575,8 @@ app.post('/api/cancel-subscription', async (req, res) => {
       raw_payload: { cancel_response: text }
     }]);
 
-    // 移除 LINE 白名單
-    await callBot(process.env.BOT_REMOVE_URL, {
-      provider: 'line',
-      user_id: userId,
-      reason: 'canceled'
-    }, userId);
-
-    res.json({ ok: true, message: '訂閱已取消' });
+    // ✅ 不立即移除白名單，保留到 current_period_end，由 CRON 再清理
+    res.json({ ok: true, message: '訂閱已取消（當期結束後將不再扣款與續用）' });
   } catch (e) {
     console.error('[CANCEL ERROR]', e);
     res.status(500).json({ error: 'server_error' });

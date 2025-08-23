@@ -178,8 +178,11 @@
     }
     
     document.getElementById('btnCancel')
-      .addEventListener('click', (e)=>cancelSubscription(e.currentTarget));
-
+      .addEventListener('click', (e) => {
+        if (!confirm('確定要取消訂閱嗎？取消後將不再自動扣款，但您仍可使用到期日前的服務。')) return;
+        cancelSubscription(e.currentTarget);
+      });
+      
     document.getElementById('btnMonth').addEventListener('click', (e)=>startSubscribe('month', e.currentTarget));
     document.getElementById('btnYear').addEventListener('click',  (e)=>startSubscribe('year',  e.currentTarget));
   </script>
