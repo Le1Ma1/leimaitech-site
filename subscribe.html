@@ -46,6 +46,11 @@
       </div>
     </div>
   </div>
+  <div class="card">
+    <h3>管理訂閱</h3>
+    <p class="muted">若您已經訂閱，可隨時取消，下期將不會再扣款。</p>
+    <button id="btnCancel" class="btn" style="background:#dc2626">取消訂閱</button>
+  </div>
 
   <!-- 只有在沒拿到 uid 時才會顯示 -->
   <div id="blocker" class="blocker">
@@ -64,18 +69,18 @@
     // === 若不在 LINE / 取不到 uid，提供一鍵在 LINE 開啟 ===
     const blocker = document.getElementById('blocker');
     const openBtn = document.getElementById('openInLine');
-      
+
     const btnMonth = document.getElementById('btnMonth');
     const btnYear = document.getElementById('btnYear');
     btnMonth.disabled = true;
     btnYear.disabled = true;
-      
+
     function setOpenInLineFallback(){
       const isMobile = /iphone|ipad|ipod|android/i.test(navigator.userAgent);
       const here = location.href;
       openBtn.href = isMobile ? `line://app/${LIFF_ID}` : `https://liff.line.me/${LIFF_ID}?redirectUri=${encodeURIComponent(here)}`;
     }
-    
+
     (async function ensureUid(){
       const p = new URLSearchParams(location.search);
       const hasUid = /^U[a-f0-9]{32}$/i.test(p.get('uid') || '');
@@ -152,6 +157,28 @@
         btn.disabled = false; btn.textContent = btn.dataset.label || '再試一次';
       }
     }
+
+    // === 取消訂閱 ===
+    async function cancelSubscription(btn){
+      const uid = new URLSearchParams(location.search).get('uid') || '';
+      if (!/^U[a-f0-9]{32}$/i.test(uid)) { alert('請先於 LINE 中開啟此頁'); return; }
+    
+      try{
+        btn.disabled = true; btn.dataset.label = btn.textContent;
+        btn.innerHTML = '<span class="spinner"></span> 處理中…';
+      
+        const r = await postJSON('/api/cancel-subscription', { userId: uid });
+        btn.innerHTML = '✅ 已取消';
+        alert(r?.message || '您的訂閱已取消，當期結束後將不再扣款');
+      }catch(e){
+        console.error(e);
+        alert(e?.message || '伺服器忙碌，請稍後再試');
+        btn.disabled = false; btn.textContent = btn.dataset.label || '取消訂閱';
+      }
+    }
+    
+    document.getElementById('btnCancel')
+      .addEventListener('click', (e)=>cancelSubscription(e.currentTarget));
 
     document.getElementById('btnMonth').addEventListener('click', (e)=>startSubscribe('month', e.currentTarget));
     document.getElementById('btnYear').addEventListener('click',  (e)=>startSubscribe('year',  e.currentTarget));

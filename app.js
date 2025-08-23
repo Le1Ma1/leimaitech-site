@@ -169,6 +169,14 @@ function aesDecrypt(enc) {
   }
 }
 
+/* AES 加密（供 AlterStatus 用） */
+function aesEncrypt(obj, key, iv){
+  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(key,'utf8'), Buffer.from(iv,'utf8'));
+  let enc = cipher.update(qs.stringify(obj), 'utf8', 'hex');
+  enc += cipher.final('hex');
+  return enc;
+}
+
 /* ===== 顯式頁面 ===== */
 const send = p => (req, res) => res.sendFile(path.join(__dirname, p));
 app.get(['/subscribe', '/subscribe/'], send('subscribe.html'));
@@ -503,6 +511,81 @@ app.post('/api/period-webhook', express.raw({ type: '*/*', limit: '2mb' }), asyn
   } catch (e) {
     console.error('[WEBHOOK] error', e);
     return res.status(200).send('IGNORED');
+  }
+});
+
+// ===== 取消訂閱 =====
+app.post('/api/cancel-subscription', async (req, res) => {
+  try {
+    const { userId } = req.body || {};
+    if (!isLineUserId(userId)) return res.status(400).json({ error: '缺少有效的 LINE userId' });
+
+    // 找到訂閱
+    const { data: sub } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .in('status', ['trialing','active','past_due'])
+      .maybeSingle();
+
+    if (!sub) return res.status(404).json({ error: '沒有可取消的訂閱' });
+    if (!sub.gateway_period_no) return res.status(400).json({ error: '缺少委託單號，無法取消' });
+
+    // ===== 呼叫藍新 AlterStatus API =====
+    const payload = {
+      RespondType: 'JSON',
+      Version: '1.0',
+      TimeStamp: Math.floor(Date.now()/1000),
+      MerOrderNo: `cancel_${Date.now()}`, // 商店端自定取消單號
+      PeriodNo: sub.gateway_period_no,
+      AlterType: 'terminate' // 終止
+    };
+    const enc = aesEncrypt(payload, process.env.HASH_KEY, process.env.HASH_IV);
+
+    const form = new URLSearchParams({
+      MerchantID_: process.env.MERCHANT_ID,
+      PostData_: enc
+    });
+
+    const resp = await fetch(`${NEWEBPAY_BASE}/MPG/period/AlterStatus`, {
+      method: 'POST',
+      body: form,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    const text = await resp.text();
+    console.log('[CANCEL RAW]', text);
+
+    // === DB 更新 ===
+    await supabase.from('subscriptions')
+      .update({ status: 'canceled', updated_at: new Date().toISOString() })
+      .eq('id', sub.id);
+
+    await supabase.from('orders')
+      .update({ status: 'canceled' })
+      .eq('user_id', userId);
+
+    await supabase.from('transactions').insert([{
+      order_no: sub.latest_invoice_no || null,
+      user_id: userId,
+      subscription_id: sub.id,
+      type: 'refund',
+      status: 'canceled',
+      gateway: 'newebpay',
+      raw_payload: { cancel_response: text }
+    }]);
+
+    // 移除 LINE 白名單
+    await callBot(process.env.BOT_REMOVE_URL, {
+      provider: 'line',
+      user_id: userId,
+      reason: 'canceled'
+    }, userId);
+
+    res.json({ ok: true, message: '訂閱已取消' });
+  } catch (e) {
+    console.error('[CANCEL ERROR]', e);
+    res.status(500).json({ error: 'server_error' });
   }
 });
 
